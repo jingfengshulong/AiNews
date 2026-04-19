@@ -45,11 +45,26 @@ async function main() {
       throw new Error("Homepage contains a prominent search UI");
     }
 
+    const heroHref = await desktop.locator(".hero-link").getAttribute("href");
+    if (!heroHref || !heroHref.includes("details.html?id=agent-enterprise")) {
+      throw new Error("Homepage lead story does not link to its detail page");
+    }
+
+    await desktop.locator(".hero-link").click();
+    await desktop.waitForLoadState("networkidle");
+    await assertText(desktop, "AI BRIEF");
+    await assertText(desktop, "KEY POINTS");
+    await assertText(desktop, "SOURCE TIMELINE");
+    await assertText(desktop, "RELATED SIGNALS");
+    await assertNoHorizontalOverflow(desktop, "desktop detail page");
+    await desktop.screenshot({ path: path.join(screenshotDir, "detail-desktop.png"), fullPage: true });
+
     const pages = [
       ["sources.html", "按资讯来源浏览"],
       ["dates.html", "按日期回看热点"],
       ["topics.html", "AI 产业专题线索"],
-      ["search.html", "搜索 AI 资讯信号"]
+      ["search.html", "搜索 AI 资讯信号"],
+      ["details.html?id=license-boundary", "开源模型许可证争议持续升温"]
     ];
 
     for (const [path, heading] of pages) {
@@ -62,6 +77,15 @@ async function main() {
     await desktop.locator("#searchInput").fill("端侧模型");
     await desktop.locator("#searchButton").click();
     await assertText(desktop, "已为「端侧模型」生成静态示例结果。");
+
+    const concreteNewsPages = ["sources.html", "dates.html", "topics.html", "search.html"];
+    for (const path of concreteNewsPages) {
+      await desktop.goto(`${baseUrl}/${path}`, { waitUntil: "networkidle" });
+      const firstNewsHref = await desktop.locator("a.entry-row, a.topic-row, a.result-row").first().getAttribute("href");
+      if (!firstNewsHref || !firstNewsHref.startsWith("details.html?id=")) {
+        throw new Error(`${path} first concrete news item does not link to details`);
+      }
+    }
 
     const mobile = await browser.newPage({ viewport: { width: 390, height: 900 }, isMobile: true });
     await mobile.goto(baseUrl, { waitUntil: "networkidle" });

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>资讯详情 | Signal Daily</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="detail">
+  <header class="site-header">
+    <div class="site-shell header-inner">
+      <a class="brand" href="index.html" aria-label="Signal Daily 首页">
+        <span class="brand-mark">AI</span>
+        <span>Signal Daily</span>
+      </a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-nav="home">今日热点</a>
+        <a href="sources.html" data-nav="sources">来源</a>
+        <a href="dates.html" data-nav="dates">日期</a>
+        <a href="topics.html" data-nav="topics">专题</a>
+      </nav>
+      <a class="compact-search" href="search.html" data-nav="search" aria-label="打开搜索">⌕</a>
+    </div>
+  </header>
+
+  <main class="site-shell">
+    <nav class="detail-breadcrumb" aria-label="详情页路径">
+      <a href="index.html">今日热点</a>
+      <span>/</span>
+      <a href="topics.html" data-detail-field="topic">AI Agent</a>
+      <span>/</span>
+      <span>资讯详情</span>
+    </nav>
+
+    <article class="detail-article">
+      <header class="detail-hero">
+        <div>
+          <div class="page-kicker" data-detail-field="kicker">#01 / HOT SIGNAL</div>
+          <h1 class="detail-title" data-detail-field="title">AI Agent 企业落地进入加速周</h1>
+          <p class="detail-deck" data-detail-field="summary">多条产品发布、融资与企业采购信号在 24 小时内同时出现。</p>
+          <div class="detail-meta">
+            <span data-detail-field="source">Signal Daily</span>
+            <span data-detail-field="date">04.20</span>
+            <span data-detail-field="category">科技媒体</span>
+            <span>热度 <b data-detail-field="heat">98°</b></span>
+          </div>
+        </div>
+
+        <aside class="detail-score" aria-label="信号评分">
+          <span class="stat-label">SIGNAL SCORE</span>
+          <strong data-detail-field="score">91</strong>
+          <div class="detail-score-line"><i data-detail-style="heatWidth"></i></div>
+          <p data-detail-field="scoreText">来源密度高，跨媒体、融资和产品发布同时升温。</p>
+        </aside>
+      </header>
+
+      <section class="detail-grid">
+        <div class="detail-main">
+          <section class="detail-section">
+            <div class="section-label"><span>AI BRIEF</span><span>AUTO SUMMARY</span></div>
+            <p class="detail-body" data-detail-field="body">这条资讯显示企业 AI Agent 正从演示阶段进入采购与部署阶段。</p>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-label"><span>KEY POINTS</span><span>WHY IT MATTERS</span></div>
+            <ol class="detail-points" data-detail-list="points"></ol>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-label"><span>SOURCE TIMELINE</span><span>MERGED SIGNALS</span></div>
+            <div class="timeline-list" data-detail-list="timeline"></div>
+          </section>
+        </div>
+
+        <aside class="detail-side">
+          <section class="detail-section compact">
+            <div class="section-label"><span>SOURCE MIX</span><span>TRUST</span></div>
+            <div class="source-mix" data-detail-list="sourceMix"></div>
+          </section>
+
+          <section class="detail-section compact">
+            <div class="section-label"><span>NEXT WATCH</span><span>24H</span></div>
+            <p class="detail-body" data-detail-field="watch">关注企业采购、产品权限和成本治理是否继续形成同向信号。</p>
+          </section>
+
+          <section class="detail-section compact">
+            <div class="section-label"><span>RELATED SIGNALS</span><span>OPEN</span></div>
+            <div class="related-list" data-detail-list="related"></div>
+          </section>
+        </aside>
+      </section>
+    </article>
+  </main>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
