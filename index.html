@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signal Daily | AI 资讯头版</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="home">
+  <header class="site-header">
+    <div class="site-shell header-inner">
+      <a class="brand" href="index.html" aria-label="Signal Daily 首页">
+        <span class="brand-mark">AI</span>
+        <span>Signal Daily</span>
+      </a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-nav="home">今日热点</a>
+        <a href="sources.html" data-nav="sources">来源</a>
+        <a href="dates.html" data-nav="dates">日期</a>
+        <a href="topics.html" data-nav="topics">专题</a>
+      </nav>
+      <a class="compact-search" href="search.html" data-nav="search" aria-label="打开搜索">⌕</a>
+    </div>
+  </header>
+
+  <main class="site-shell">
+    <section class="home-hero">
+      <div class="hero-main">
+        <div class="system-label">#01 / MOST EXPLOSIVE TODAY / <span data-current-date></span></div>
+        <h1 class="hero-title">AI Agent 企业落地进入加速周</h1>
+        <p class="hero-summary">多条产品发布、融资与企业采购信号在 24 小时内同时出现。企业正在从“试用 AI”转向“把 AI 接入真实流程”。</p>
+        <div class="heat-meter" aria-label="今日热度 98">
+          <span>HEAT</span>
+          <i></i>
+          <span>98</span>
+        </div>
+      </div>
+
+      <aside class="rank-panel" aria-label="今日热榜">
+        <div class="section-label">
+          <span>TODAY TOP RANKING</span>
+          <span>LIVE</span>
+        </div>
+        <div class="ranking-list">
+          <a class="ranking-item" href="topics.html">
+            <span class="rank-number">02</span>
+            <div>
+              <h2>开源模型许可证争议持续升温</h2>
+              <p>媒体、开发者社区与企业采购团队同时关注模型权利边界。</p>
+            </div>
+          </a>
+          <a class="ranking-item" href="topics.html">
+            <span class="rank-number">03</span>
+            <div>
+              <h2>端侧小模型发布频率创下本月新高</h2>
+              <p>硬件厂商与应用平台形成联动，隐私和低延迟成为核心叙事。</p>
+            </div>
+          </a>
+          <a class="ranking-item" href="topics.html">
+            <span class="rank-number">04</span>
+            <div>
+              <h2>AI 视频工具进入专业制作链路</h2>
+              <p>爆款内容、广告制作和素材管理工具出现同向增长。</p>
+            </div>
+          </a>
+        </div>
+      </aside>
+    </section>
+
+    <section class="signal-strip" aria-label="今日统计信息">
+      <div class="stat-block">
+        <span class="stat-label">HOT NEWS</span>
+        <span class="stat-value">24</span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">NEW SOURCES</span>
+        <span class="stat-value" style="color: var(--cyan)">318</span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">TOP TOPIC</span>
+        <span class="stat-value" style="color: var(--lime)">Agent</span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">SIGNAL SCORE</span>
+        <span class="stat-value" style="color: var(--amber)">91</span>
+      </div>
+    </section>
+
+    <section class="home-archives" aria-label="分类入口">
+      <div>
+        <div class="section-label">
+          <span>BY SOURCE</span>
+          <a href="sources.html">VIEW ALL</a>
+        </div>
+        <div class="entry-list">
+          <a class="entry-row" href="sources.html">
+            <h3>科技媒体</h3>
+            <span class="source-count">86 条</span>
+          </a>
+          <a class="entry-row" href="sources.html">
+            <h3>论文与研究</h3>
+            <span class="source-count">34 条</span>
+          </a>
+          <a class="entry-row" href="sources.html">
+            <h3>投融资</h3>
+            <span class="source-count">21 条</span>
+          </a>
+          <a class="entry-row" href="sources.html">
+            <h3>政策监管</h3>
+            <span class="source-count">12 条</span>
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">
+          <span>BY DATE</span>
+          <a href="dates.html">ARCHIVE</a>
+        </div>
+        <div class="entry-list">
+          <a class="entry-row" href="dates.html">
+            <h3>今天</h3>
+            <span class="archive-date">24 条热点</span>
+          </a>
+          <a class="entry-row" href="dates.html">
+            <h3>昨天</h3>
+            <span class="archive-date">17 条热点</span>
+          </a>
+          <a class="entry-row" href="dates.html">
+            <h3>本周</h3>
+            <span class="archive-date">97 条趋势资讯</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="live-ticker" aria-label="实时更新">
+      <div class="ticker-track">LIVE SIGNALS / 新论文聚类完成 / AI 视频热度上升 / 端侧模型新增 12 条来源 / 企业 Agent 仍居热榜第一 / LIVE SIGNALS / 新论文聚类完成 / AI 视频热度上升 / 端侧模型新增 12 条来源 / 企业 Agent 仍居热榜第一 /</div>
+    </section>
+  </main>
+
+  <footer class="site-shell footer-note">静态前端原型 / 资讯、统计和热度数据均为示例内容。</footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

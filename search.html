@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>搜索 | Signal Daily</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="search">
+  <header class="site-header">
+    <div class="site-shell header-inner">
+      <a class="brand" href="index.html" aria-label="Signal Daily 首页">
+        <span class="brand-mark">AI</span>
+        <span>Signal Daily</span>
+      </a>
+      <nav class="site-nav" aria-label="主导航">
+        <a href="index.html" data-nav="home">今日热点</a>
+        <a href="sources.html" data-nav="sources">来源</a>
+        <a href="dates.html" data-nav="dates">日期</a>
+        <a href="topics.html" data-nav="topics">专题</a>
+      </nav>
+      <a class="compact-search" href="search.html" data-nav="search" aria-label="打开搜索">⌕</a>
+    </div>
+  </header>
+
+  <main class="site-shell">
+    <section class="page-hero">
+      <div>
+        <div class="page-kicker">SECONDARY SEARCH</div>
+        <h1 class="page-title">搜索 AI 资讯信号</h1>
+        <p class="page-intro">搜索被放在独立页面，作为深入探索工具。当前原型只演示界面状态，不连接真实数据。</p>
+      </div>
+      <div class="page-stat">
+        <strong>318</strong>
+        <span>今日新增可检索来源</span>
+      </div>
+    </section>
+
+    <section class="search-workbench">
+      <div class="search-line">
+        <input id="searchInput" type="search" value="AI Agent 企业采购" aria-label="搜索关键词">
+        <button id="searchButton" type="button">搜索</button>
+      </div>
+      <div class="chips" aria-label="筛选条件">
+        <span class="chip">过去 24 小时</span>
+        <span class="chip">影响力优先</span>
+        <span class="chip">媒体 + 论文</span>
+        <span class="chip">中文摘要</span>
+      </div>
+      <p class="search-status" id="searchStatus">静态示例结果已准备好。</p>
+      <div class="result-list">
+        <a class="result-row" href="topics.html"><div><h3>AI Agent 企业落地进入加速周</h3><p>多条采购、融资与产品发布信号同时出现。</p><span class="meta"><span>科技媒体</span><span>12 sources</span><span>04.20</span></span></div><span class="heat-value">98°</span></a>
+        <a class="result-row" href="topics.html"><div><h3>流程自动化成为企业 AI 预算新入口</h3><p>从模型订阅转向系统集成，采购语言正在变化。</p><span class="meta"><span>投融资</span><span>6 sources</span><span>04.20</span></span></div><span class="heat-value">91°</span></a>
+        <a class="result-row" href="topics.html"><div><h3>连接器和权限控制成为 Agent 平台重点</h3><p>产品能力从演示转向实际部署所需的治理模块。</p><span class="meta"><span>产品发布</span><span>9 sources</span><span>04.19</span></span></div><span class="heat-value">87°</span></a>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
