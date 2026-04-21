@@ -6,8 +6,9 @@ import { createLogger } from '../logging/logger.ts';
 import { InMemoryQueue } from '../queue/in-memory-queue.ts';
 import { processFetchJobs } from '../ingestion/fetch-job-handler.ts';
 import { processQueuedJobs } from '../ingestion/process-job-handler.ts';
+import { processEnrichmentJobs } from '../signal-processing/enrichment-job-handler.ts';
 
-export function createWorker({ config = loadConfig(), queue = new InMemoryQueue(), logger = createLogger(), fetchJobHandler, processJobHandler } = {}) {
+export function createWorker({ config = loadConfig(), queue = new InMemoryQueue(), logger = createLogger(), fetchJobHandler, processJobHandler, enrichmentJobHandler } = {}) {
   return {
     queue,
     health() {
@@ -50,6 +51,20 @@ export function createWorker({ config = loadConfig(), queue = new InMemoryQueue(
         limit
       });
       logger.info('process_jobs_finished', summary);
+      return summary;
+    },
+    async runEnrichmentJobs({ limit = 25 } = {}) {
+      if (!enrichmentJobHandler) {
+        logger.warn('enrichment_jobs_skipped', { reason: 'missing_enrichment_job_handler' });
+        return { completed: 0, failed: 0, results: [] };
+      }
+
+      const summary = await processEnrichmentJobs({
+        queue,
+        handler: enrichmentJobHandler,
+        limit
+      });
+      logger.info('enrichment_jobs_finished', summary);
       return summary;
     }
   };

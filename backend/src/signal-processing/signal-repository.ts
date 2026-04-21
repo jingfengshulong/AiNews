@@ -18,6 +18,14 @@ export class SignalRepository {
       status: input.status || 'candidate',
       primaryPublishedAt: input.primaryPublishedAt,
       enrichmentStatus: input.enrichmentStatus || 'pending',
+      aiBrief: input.aiBrief,
+      keyPoints: input.keyPoints,
+      timeline: input.timeline,
+      sourceMix: input.sourceMix,
+      nextWatch: input.nextWatch,
+      relatedSignalIds: input.relatedSignalIds,
+      enrichmentError: input.enrichmentError,
+      enrichmentMeta: input.enrichmentMeta,
       createdAt: now,
       updatedAt: now
     };
@@ -56,6 +64,60 @@ export class SignalRepository {
       ...existing,
       heatScore: roundScore(heatScore),
       signalScore: roundScore(signalScore),
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
+  markEnrichmentProcessing(id) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      enrichmentStatus: 'processing',
+      enrichmentError: undefined,
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
+  updateEnrichmentSuccess(id, output, meta = {}) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      summary: output.aiBrief,
+      aiBrief: output.aiBrief,
+      keyPoints: output.keyPoints,
+      timeline: output.timeline,
+      sourceMix: output.sourceMix,
+      nextWatch: output.nextWatch,
+      relatedSignalIds: output.relatedSignalIds || [],
+      enrichmentStatus: 'completed',
+      enrichmentError: undefined,
+      enrichmentMeta: meta,
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
+  updateEnrichmentFailure(id, message, meta = {}) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      enrichmentStatus: 'failed',
+      enrichmentError: message,
+      enrichmentMeta: meta,
       updatedAt: new Date().toISOString()
     };
     this.store.signals.set(id, updated);

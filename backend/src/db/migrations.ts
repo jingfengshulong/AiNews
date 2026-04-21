@@ -73,6 +73,14 @@ create table if not exists signals (
   status text not null default 'candidate',
   primary_published_at timestamptz,
   enrichment_status text not null default 'pending',
+  ai_brief text,
+  key_points jsonb not null default '[]'::jsonb,
+  timeline jsonb not null default '[]'::jsonb,
+  source_mix jsonb not null default '[]'::jsonb,
+  next_watch text,
+  related_signal_ids jsonb not null default '[]'::jsonb,
+  enrichment_error text,
+  enrichment_meta jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

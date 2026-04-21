@@ -37,9 +37,9 @@
 - [x] 4.3 Implement signal clustering from related articles using topic, time window, source evidence, and title similarity.
 - [x] 4.4 Implement topic assignment for AI Agent, large model products, AI video, edge models, policy, research, funding, and company announcements.
 - [x] 4.5 Implement explainable heat score and signal score calculation with persisted score components.
-- [ ] 4.6 Implement asynchronous enrichment job model for AI brief, key points, timeline, source mix, next-watch text, and related signals.
-- [ ] 4.7 Add validation that enrichment output is short, attributable, and does not expose full copied article text when source policy forbids it.
-- [ ] 4.8 Add tests covering article dedupe, signal clustering, score component persistence, enrichment success, and enrichment failure.
+- [x] 4.6 Implement asynchronous enrichment job model for AI brief, key points, timeline, source mix, next-watch text, and related signals.
+- [x] 4.7 Add validation that enrichment output is short, attributable, and does not expose full copied article text when source policy forbids it.
+- [x] 4.8 Add tests covering article dedupe, signal clustering, score component persistence, enrichment success, and enrichment failure.
 
 ## 5. Serving APIs
 

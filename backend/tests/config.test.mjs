@@ -14,7 +14,9 @@ test('loads backend configuration with secret values kept separate from public r
     RUNTIME_MODE: 'test',
     NEWSAPI_KEY: 'newsapi-secret',
     PRODUCT_HUNT_TOKEN: 'product-hunt-secret',
-    AI_ENRICHMENT_API_KEY: 'llm-secret'
+    AI_ENRICHMENT_API_KEY: 'llm-secret',
+    AI_ENRICHMENT_MODEL: 'gpt-test',
+    AI_ENRICHMENT_BASE_URL: 'https://api.example.com/v1'
   });
 
   assert.equal(config.runtimeMode, 'test');
@@ -22,6 +24,8 @@ test('loads backend configuration with secret values kept separate from public r
   assert.equal(config.redisUrl, 'redis://localhost:6379/0');
   assert.equal(config.sourceSecretRefs.newsapi, 'NEWSAPI_KEY');
   assert.equal(config.enrichmentSecretRef, 'AI_ENRICHMENT_API_KEY');
+  assert.equal(config.enrichment.model, 'gpt-test');
+  assert.equal(config.enrichment.baseUrl, 'https://api.example.com/v1');
   assert.equal(config.secrets.newsapi, 'newsapi-secret');
 
   const publicConfig = redactConfig(config);
@@ -48,7 +52,9 @@ test('loads backend configuration from .env file values', async () => {
     'PRODUCT_HUNT_TOKEN="product hunt token"',
     'SEMANTIC_SCHOLAR_API_KEY=semantic-scholar-secret',
     'CROSSREF_CONTACT_EMAIL=ai-news@example.com',
-    'AI_ENRICHMENT_API_KEY=llm-from-env-file'
+    'AI_ENRICHMENT_API_KEY=llm-from-env-file',
+    'AI_ENRICHMENT_MODEL=gpt-env',
+    'AI_ENRICHMENT_BASE_URL=https://api.env.example/v1'
   ].join('\n'));
 
   try {
@@ -61,6 +67,8 @@ test('loads backend configuration from .env file values', async () => {
     assert.equal(config.secrets.semanticScholar, 'semantic-scholar-secret');
     assert.equal(config.crossrefContactEmail, 'ai-news@example.com');
     assert.equal(config.secrets.enrichment, 'llm-from-env-file');
+    assert.equal(config.enrichment.model, 'gpt-env');
+    assert.equal(config.enrichment.baseUrl, 'https://api.env.example/v1');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

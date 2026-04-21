@@ -30,6 +30,8 @@ Current source and enrichment variables:
 - `PRODUCT_HUNT_TOKEN`
 - `CROSSREF_CONTACT_EMAIL`
 - `AI_ENRICHMENT_API_KEY`
+- `AI_ENRICHMENT_MODEL`
+- `AI_ENRICHMENT_BASE_URL`
 
 ## Source Notes
 
@@ -68,3 +70,15 @@ Fetch adapters throw structured `SourceFetchError` values for upstream failures.
 - `configuration_error` and other non-retryable failures: marks the job failed and updates source health.
 
 Successful fetch jobs persist raw records, enqueue process jobs for new raw items, and mark the source healthy.
+
+## AI Enrichment
+
+Signal enrichment runs asynchronously through the `enrichment` queue lane. The current implementation uses a provider interface, so tests can run with a deterministic provider while a real model provider is added later.
+
+When a real provider is wired, configure these project-root `.env` values:
+
+- `AI_ENRICHMENT_API_KEY`: provider credential kept server-side.
+- `AI_ENRICHMENT_MODEL`: model name selected for brief/key point/timeline generation.
+- `AI_ENRICHMENT_BASE_URL`: provider API base URL when using a custom or compatible endpoint.
+
+Generated enrichment output is validated before it is stored. It must stay short, include source attribution, and must not expose copied full article text from sources whose policy forbids full-text display.

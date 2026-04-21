@@ -20,6 +20,10 @@ export function loadConfig(env = process.env) {
       crossrefContactEmail: 'CROSSREF_CONTACT_EMAIL'
     },
     enrichmentSecretRef: 'AI_ENRICHMENT_API_KEY',
+    enrichment: {
+      model: env.AI_ENRICHMENT_MODEL || 'mock-enrichment',
+      baseUrl: env.AI_ENRICHMENT_BASE_URL
+    },
     crossrefContactEmail: env.CROSSREF_CONTACT_EMAIL,
     secrets: {
       newsapi: env.NEWSAPI_KEY,
@@ -82,6 +86,7 @@ export function redactConfig(config) {
     redisUrl: redactUrl(config.redisUrl),
     sourceSecretRefs: { ...config.sourceSecretRefs },
     enrichmentSecretRef: config.enrichmentSecretRef,
+    enrichment: { ...config.enrichment },
     crossrefContactEmail: config.crossrefContactEmail,
     secrets: {
       newsapi: config.secrets.newsapi ? '[redacted]' : undefined,

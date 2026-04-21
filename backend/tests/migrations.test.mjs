@@ -13,6 +13,9 @@ test('initial migration defines the core news data tables', () => {
   assert.match(firstMigration.sql, /text_for_ai text/i);
   assert.match(firstMigration.sql, /full_text_display_allowed boolean/i);
   assert.match(firstMigration.sql, /extraction_meta jsonb/i);
+  assert.match(firstMigration.sql, /ai_brief text/i);
+  assert.match(firstMigration.sql, /key_points jsonb/i);
+  assert.match(firstMigration.sql, /enrichment_meta jsonb/i);
 });
 
 test('migration plan excludes migrations already applied', () => {
