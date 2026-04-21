@@ -47,6 +47,21 @@ export class SignalRepository {
     return cloneRecord(updated);
   }
 
+  updateScores(id, { heatScore, signalScore }) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      heatScore: roundScore(heatScore),
+      signalScore: roundScore(signalScore),
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
   findSignalByArticleIds(articleIds) {
     const expected = new Set(articleIds);
     for (const signal of this.store.signals.values()) {
@@ -119,4 +134,8 @@ function slugify(title, suffix) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 72);
   return `${slug || 'signal'}-${suffix}`;
+}
+
+function roundScore(value) {
+  return Math.round(Math.max(0, Math.min(100, value)) * 100) / 100;
 }

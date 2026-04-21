@@ -14,6 +14,8 @@ export class InMemoryStore {
     this.topicIndex = new Map();
     this.signalTopics = new Map();
     this.signalTopicIndex = new Map();
+    this.scoreComponents = new Map();
+    this.scoreComponentIndex = new Map();
     this.jobs = new Map([
       ['fetch', new Map()],
       ['process', new Map()],

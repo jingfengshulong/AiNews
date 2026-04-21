@@ -10,6 +10,7 @@ import './article-normalization.test.mjs';
 import './article-dedupe.test.mjs';
 import './signal-clustering.test.mjs';
 import './topic-classification.test.mjs';
+import './signal-scoring.test.mjs';
 import './fetch-job-handler.test.mjs';
 import './process-job-handler.test.mjs';
 import './health.test.mjs';
