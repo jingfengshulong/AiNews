@@ -32,6 +32,19 @@ async function renderPage({ file, url, responses }) {
 }
 
 const homeResponse = {
+  dataStatus: {
+    mode: 'live',
+    runId: 'live_test',
+    lastLiveFetchAt: '2026-04-21T11:55:00.000Z',
+    stale: false,
+    sourceOutcomeCounts: {
+      succeeded: 3,
+      failed: 0,
+      skipped: 1,
+      fetched: 7,
+      processed: 7
+    }
+  },
   leadSignal: {
     id: 'sig_0001',
     title: 'OpenAI introduces Agent SDK updates for enterprise developers',
@@ -128,6 +141,42 @@ test('homepage renders lead, ranking, stats, archives, and ticker from /api/home
   assert.match(document.querySelector('.signal-strip').textContent, /5/);
   assert.match(document.querySelector('.home-archives').textContent, /Research/);
   assert.match(document.querySelector('.ticker-track').textContent, /OpenAI introduces/);
+  assert.match(document.querySelector('.footer-note').textContent, /LIVE DATA/);
+  assert.match(document.querySelector('.footer-note').textContent, /3 sources/);
+});
+
+test('homepage renders stale and fixture data status from /api/home metadata', async () => {
+  const staleDom = await renderPage({
+    file: 'index.html',
+    url: 'http://localhost/index.html',
+    responses: {
+      '/api/home': {
+        ...homeResponse,
+        dataStatus: {
+          ...homeResponse.dataStatus,
+          stale: true,
+          sourceOutcomeCounts: { succeeded: 2, failed: 1, skipped: 1 }
+        }
+      }
+    }
+  });
+  assert.match(staleDom.window.document.querySelector('.footer-note').textContent, /STALE LIVE DATA/);
+
+  const fixtureDom = await renderPage({
+    file: 'index.html',
+    url: 'http://localhost/index.html',
+    responses: {
+      '/api/home': {
+        ...homeResponse,
+        dataStatus: {
+          mode: 'demo',
+          stale: false,
+          sourceOutcomeCounts: { succeeded: 0, failed: 0, skipped: 0 }
+        }
+      }
+    }
+  });
+  assert.match(fixtureDom.window.document.querySelector('.footer-note').textContent, /DEMO DATA/);
 });
 
 test('detail page renders signal detail from /api/signals/:id', async () => {

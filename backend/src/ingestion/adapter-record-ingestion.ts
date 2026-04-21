@@ -27,7 +27,10 @@ export function persistAdapterRecords({ source, records, rawItemRepository, queu
     }
 
     created.push(rawItem);
-    queue.enqueue('process', { rawItemId: rawItem.id, sourceId: source.id }, { jobKey: `process:${rawItem.id}` });
+    queue.enqueue('process', { rawItemId: rawItem.id, sourceId: source.id }, {
+      jobKey: `process:${rawItem.id}`,
+      runAfter: fetchedAt
+    });
   }
 
   return {

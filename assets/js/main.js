@@ -131,7 +131,7 @@
     if (ticker) {
       ticker.textContent = home.tickerItems.map((item) => item.text).join(" / ");
     }
-    setText(".footer-note", "后端 API 数据已接入：当前页面展示由本地 demo ingestion 生成的 Signal 数据。");
+    setText(".footer-note", formatDataStatus(home.dataStatus));
   }
 
   async function hydrateDetailPage() {
@@ -396,6 +396,34 @@
 
   function formatScore(value) {
     return String(Math.round(Number(value || 0)));
+  }
+
+  function formatDataStatus(status) {
+    if (!status) {
+      return "API DATA / status unavailable";
+    }
+    const counts = status.sourceOutcomeCounts || {};
+    if (status.mode === "live") {
+      const label = status.stale ? "STALE LIVE DATA" : "LIVE DATA";
+      return `${label} / ${counts.succeeded || 0} sources OK / ${counts.failed || 0} failed / ${counts.skipped || 0} skipped / fetched ${counts.fetched || 0} / updated ${formatDateTime(status.lastLiveFetchAt)}`;
+    }
+    if (status.mode === "demo" || status.mode === "fixture") {
+      return "DEMO DATA / deterministic local backend fixture";
+    }
+    return `${String(status.mode || "API").toUpperCase()} DATA / status pending`;
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return "pending";
+    }
+    return new Intl.DateTimeFormat("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date(value));
   }
 
   function padRank(value) {

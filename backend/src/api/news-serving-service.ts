@@ -15,6 +15,7 @@ export function createNewsServingService({
   sourceService,
   topicRepository,
   scoreComponentRepository,
+  dataStatus,
   now = () => new Date()
 } = {}) {
   const service = {
@@ -27,6 +28,7 @@ export function createNewsServingService({
       const rankedSignals = visible.filter((signal) => signal.id !== leadSignal?.id).slice(0, Math.max(0, limit - 1)).map(signalSummary);
 
       return {
+        dataStatus: resolveDataStatus(),
         dataWindow: {
           label: todaySignals.length > 0 ? 'today' : 'latest',
           date: today,
@@ -239,6 +241,22 @@ export function createNewsServingService({
     return signalRepository.listSignals()
       .filter(isVisibleSignal)
       .sort(compareSignalsForProduct);
+  }
+
+  function resolveDataStatus() {
+    const value = typeof dataStatus === 'function' ? dataStatus() : dataStatus;
+    return value || {
+      mode: 'unknown',
+      stale: true,
+      sourceOutcomeCounts: {
+        ready: 0,
+        skipped: 0,
+        succeeded: 0,
+        failed: 0,
+        fetched: 0,
+        processed: 0
+      }
+    };
   }
 
   function signalSummary(signal) {

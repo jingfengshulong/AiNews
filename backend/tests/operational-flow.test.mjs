@@ -73,8 +73,16 @@ test('API server can serve static frontend files and demo API data from one loca
 
 test('package scripts expose local demo startup and smoke verification commands', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  const startLiveScript = await readFile(new URL('../scripts/start-live-api.mjs', import.meta.url), 'utf8');
 
   assert.match(packageJson.scripts['backend:demo'], /start-demo-api/);
   assert.match(packageJson.scripts['backend:demo:smoke'], /run-demo-smoke/);
   assert.match(packageJson.scripts['backend:ingest:demo'], /run-demo-ingestion/);
+  assert.match(packageJson.scripts['backend:ingest:live'], /run-live-ingestion/);
+  assert.match(packageJson.scripts['backend:live'], /start-live-api/);
+  assert.match(packageJson.scripts['backend:live:smoke'], /run-live-smoke/);
+  assert.match(startLiveScript, /LIVE_SOURCE_NAMES/);
+  assert.match(startLiveScript, /LIVE_MAX_ITEMS_PER_SOURCE/);
+  assert.match(startLiveScript, /LIVE_REQUEST_TIMEOUT_MS/);
+  assert.match(startLiveScript, /LIVE_DISABLE_AI_ENRICHMENT/);
 });

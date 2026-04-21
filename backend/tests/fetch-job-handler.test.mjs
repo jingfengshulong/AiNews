@@ -17,6 +17,7 @@ const usagePolicy = {
   commercialUseNeedsReview: true,
   attributionRequired: true
 };
+const dueBeforeTestNow = new Date('2026-04-21T08:59:00.000Z');
 
 function createRuntime() {
   const store = new InMemoryStore();
@@ -46,7 +47,7 @@ function createSource(sourceService, patch = {}) {
 test('fetch job handler persists adapter records, enqueues process jobs, and marks source healthy', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService);
-  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}` });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}`, runAfter: dueBeforeTestNow });
 
   const handler = createFetchJobHandler({
     sourceService: runtime.sourceService,
@@ -82,7 +83,7 @@ test('fetch job handler persists adapter records, enqueues process jobs, and mar
 test('fetch job handler delays rate-limited jobs and source next fetch time', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService);
-  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}` });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}`, runAfter: dueBeforeTestNow });
   const retryAt = new Date('2026-04-21T09:15:00.000Z');
 
   const handler = createFetchJobHandler({
@@ -121,7 +122,7 @@ test('fetch job handler delays rate-limited jobs and source next fetch time', as
 test('fetch job handler retries transient failures with bounded exponential backoff', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService);
-  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}` });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}`, runAfter: dueBeforeTestNow });
 
   const handler = createFetchJobHandler({
     sourceService: runtime.sourceService,
@@ -154,7 +155,7 @@ test('fetch job handler retries transient failures with bounded exponential back
 test('fetch job handler fails non-retryable configuration errors without retrying', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, { sourceType: 'newsapi', apiEndpoint: 'https://newsapi.org/v2/everything?q=ai', credentialRef: 'NEWSAPI_KEY', feedUrl: undefined });
-  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}` });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}`, runAfter: dueBeforeTestNow });
 
   const handler = createFetchJobHandler({
     sourceService: runtime.sourceService,
@@ -189,7 +190,7 @@ test('fetch job handler fails non-retryable configuration errors without retryin
 test('worker can run queued fetch jobs through the configured fetch handler', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService);
-  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}` });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType }, { jobKey: `fetch:${source.id}`, runAfter: dueBeforeTestNow });
   const fetchJobHandler = createFetchJobHandler({
     sourceService: runtime.sourceService,
     rawItemRepository: runtime.rawItemRepository,

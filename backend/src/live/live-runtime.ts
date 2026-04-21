@@ -1,0 +1,630 @@
+import { createOpenAICompatibleEnrichmentProvider } from '../ai/openai-compatible-enrichment-provider.ts';
+import { createNewsServingService } from '../api/news-serving-service.ts';
+import { InMemoryStore } from '../db/in-memory-store.ts';
+import { ArticleFetcher } from '../ingestion/article-fetcher.ts';
+import { ArticleRepository } from '../ingestion/article-repository.ts';
+import { ArxivAdapter } from '../ingestion/arxiv-adapter.ts';
+import { CrossrefAdapter } from '../ingestion/crossref-adapter.ts';
+import { createFetchJobHandler, processFetchJobs } from '../ingestion/fetch-job-handler.ts';
+import { HackerNewsAdapter } from '../ingestion/hacker-news-adapter.ts';
+import { NewsApiAdapter } from '../ingestion/newsapi-adapter.ts';
+import { createProcessJobHandler, processQueuedJobs } from '../ingestion/process-job-handler.ts';
+import { ProductHuntAdapter } from '../ingestion/product-hunt-adapter.ts';
+import { RawItemRepository } from '../ingestion/raw-item-repository.ts';
+import { RssAtomAdapter } from '../ingestion/rss-atom-adapter.ts';
+import { SemanticScholarAdapter } from '../ingestion/semantic-scholar-adapter.ts';
+import { InMemoryQueue } from '../queue/in-memory-queue.ts';
+import { ArticleDedupeService } from '../signal-processing/article-dedupe-service.ts';
+import { createEnrichmentJobHandler, enqueuePendingEnrichmentJobs, processEnrichmentJobs } from '../signal-processing/enrichment-job-handler.ts';
+import { ScoreComponentRepository } from '../signal-processing/score-component-repository.ts';
+import { SignalClusterService } from '../signal-processing/signal-cluster-service.ts';
+import { SignalRepository } from '../signal-processing/signal-repository.ts';
+import { SignalScoringService } from '../signal-processing/signal-scoring-service.ts';
+import { SourceRelationRepository } from '../signal-processing/source-relation-repository.ts';
+import { TopicClassifier } from '../signal-processing/topic-classifier.ts';
+import { TopicRepository } from '../signal-processing/topic-repository.ts';
+import { seedMvpSources } from '../sources/seed-sources.ts';
+import { SourceRepository } from '../sources/source-repository.ts';
+import { SourceService } from '../sources/source-service.ts';
+
+const defaultMaxItemsPerSource = 8;
+const defaultStaleAfterMs = 6 * 60 * 60 * 1000;
+const supportedSourceTypes = new Set(['rss', 'atom', 'newsapi', 'arxiv', 'semantic_scholar', 'hacker_news', 'product_hunt', 'crossref']);
+const credentialOptionalSourceTypes = new Set(['semantic_scholar']);
+
+export async function createLiveRuntime({
+  config = {},
+  seedSources = seedMvpSources,
+  adapters,
+  fetchImpl = globalThis.fetch,
+  articleFetcher,
+  enrichmentProvider,
+  maxItemsPerSource = defaultMaxItemsPerSource,
+  requestTimeoutMs = 15_000,
+  staleAfterMs = defaultStaleAfterMs,
+  now = () => new Date()
+} = {}) {
+  const liveFetchImpl = withRequestTimeout(fetchImpl, requestTimeoutMs);
+  const store = new InMemoryStore();
+  const queue = new InMemoryQueue(store);
+  const sourceService = new SourceService(new SourceRepository(store));
+  const rawItemRepository = new RawItemRepository(store);
+  const articleRepository = new ArticleRepository(store);
+  const sourceRelationRepository = new SourceRelationRepository(store);
+  const signalRepository = new SignalRepository(store);
+  const topicRepository = new TopicRepository(store);
+  const scoreComponentRepository = new ScoreComponentRepository(store);
+  topicRepository.seedDefaultTopics();
+
+  seedSources(sourceService);
+  activateConfiguredLiveSources({ sourceService, config });
+  const sources = sourceService.listSources();
+  let lastRunReport = createInitialReport({ now, sources });
+
+  const servingService = createNewsServingService({
+    signalRepository,
+    articleRepository,
+    sourceService,
+    topicRepository,
+    scoreComponentRepository,
+    dataStatus: () => reportToDataStatus(lastRunReport, { now, staleAfterMs }),
+    now
+  });
+
+  return {
+    store,
+    queue,
+    sourceService,
+    rawItemRepository,
+    articleRepository,
+    sourceRelationRepository,
+    signalRepository,
+    topicRepository,
+    scoreComponentRepository,
+    servingService,
+    getLastRunReport() {
+      return clone(lastRunReport);
+    },
+    async runOnce(options = {}) {
+      const report = await runLiveOnce({
+        config,
+        queue,
+        sourceService,
+        rawItemRepository,
+        articleRepository,
+        sourceRelationRepository,
+        signalRepository,
+        topicRepository,
+        scoreComponentRepository,
+        adapters: wrapAdapters(adapters || createLiveAdapters({ config, fetchImpl: liveFetchImpl, now }), {
+          maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource
+        }),
+        articleFetcher: articleFetcher || new ArticleFetcher({ fetchImpl: liveFetchImpl }),
+        enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl }),
+        maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource,
+        sourceIds: options.sourceIds,
+        now
+      });
+      lastRunReport = report;
+      return clone(report);
+    }
+  };
+}
+
+export function evaluateLiveSourceReadiness({ sources = [], config = {}, sourceIds } = {}) {
+  const allowedSourceIds = sourceIds ? new Set(sourceIds) : undefined;
+  return sources
+    .filter((source) => !allowedSourceIds || allowedSourceIds.has(source.id))
+    .map((source) => evaluateSourceReadiness({ source, config }));
+}
+
+export function reportToDataStatus(report, { now = () => new Date(), staleAfterMs = defaultStaleAfterMs } = {}) {
+  if (!report) {
+    return {
+      mode: 'unknown',
+      stale: true,
+      sourceOutcomeCounts: emptyOutcomeCounts()
+    };
+  }
+
+  return {
+    mode: report.mode,
+    runId: report.runId,
+    startedAt: report.startedAt,
+    completedAt: report.completedAt,
+    lastLiveFetchAt: report.lastLiveFetchAt,
+    stale: report.mode === 'live' ? isStale(report.lastLiveFetchAt, now(), staleAfterMs) : false,
+    sourceOutcomeCounts: clone(report.sourceOutcomeCounts || emptyOutcomeCounts()),
+    skippedReasons: clone(report.skippedReasons || {})
+  };
+}
+
+async function runLiveOnce({
+  config,
+  queue,
+  sourceService,
+  rawItemRepository,
+  articleRepository,
+  sourceRelationRepository,
+  signalRepository,
+  topicRepository,
+  scoreComponentRepository,
+  adapters,
+  articleFetcher,
+  enrichmentProvider,
+  maxItemsPerSource,
+  sourceIds,
+  now
+}) {
+  const startedAtDate = now();
+  const startedAt = startedAtDate.toISOString();
+  const runId = createRunId(startedAtDate);
+  const readiness = evaluateLiveSourceReadiness({
+    sources: sourceService.listSources(),
+    config,
+    sourceIds
+  });
+  const outcomes = readiness.map((item) => ({
+    ...item,
+    fetched: 0,
+    processed: 0
+  }));
+  const outcomesBySourceId = new Map(outcomes.map((item) => [item.sourceId, item]));
+  const readySources = outcomes
+    .filter((item) => item.status === 'ready')
+    .map((item) => sourceService.getSource(item.sourceId));
+
+  for (const source of readySources) {
+    queue.enqueue('fetch', {
+      sourceId: source.id,
+      sourceType: source.sourceType,
+      runId
+    }, {
+      jobKey: `live:${runId}:fetch:${source.id}`,
+      runAfter: startedAtDate
+    });
+  }
+
+  const fetchSummary = await processFetchJobs({
+    queue,
+    handler: createFetchJobHandler({
+      sourceService,
+      rawItemRepository,
+      queue,
+      adapters
+    }),
+    limit: Math.max(readySources.length, 1),
+    now: startedAtDate
+  });
+  applyFetchOutcomes({ queue, runId, outcomesBySourceId });
+
+  const processSummary = await processQueuedJobs({
+    queue,
+    handler: createProcessJobHandler({
+      rawItemRepository,
+      sourceService,
+      articleFetcher,
+      articleRepository
+    }),
+    limit: Math.max(readySources.length * maxItemsPerSource, 1),
+    now: startedAtDate
+  });
+  applyProcessOutcomes({ processSummary, outcomesBySourceId });
+
+  const dedupeSummary = new ArticleDedupeService({
+    articleRepository,
+    sourceRelationRepository,
+    now
+  }).dedupeArticles();
+  const clusterSummary = new SignalClusterService({
+    articleRepository,
+    signalRepository,
+    sourceRelationRepository,
+    sourceService,
+    now
+  }).clusterArticles();
+  const topicSummary = new TopicClassifier({
+    topicRepository,
+    signalRepository,
+    articleRepository,
+    sourceService,
+    now
+  }).classifySignals();
+  const scoringSummary = new SignalScoringService({
+    signalRepository,
+    articleRepository,
+    sourceService,
+    sourceRelationRepository,
+    topicRepository,
+    scoreComponentRepository,
+    now
+  }).scoreSignals();
+
+  enqueuePendingEnrichmentJobs({
+    signalRepository,
+    queue,
+    now: startedAtDate
+  });
+  const enrichmentSummary = await processEnrichmentJobs({
+    queue,
+    handler: createEnrichmentJobHandler({
+      signalRepository,
+      articleRepository,
+      sourceService,
+      provider: enrichmentProvider
+    }),
+    limit: Math.max(signalRepository.listSignals().length, 1),
+    now: startedAtDate
+  });
+
+  const completedAt = now().toISOString();
+  const sources = Array.from(outcomesBySourceId.values());
+  const sourceOutcomeCounts = countSourceOutcomes(sources);
+
+  return {
+    mode: 'live',
+    runId,
+    startedAt,
+    completedAt,
+    lastLiveFetchAt: sourceOutcomeCounts.succeeded > 0 ? completedAt : undefined,
+    maxItemsPerSource,
+    sources,
+    sourceOutcomeCounts,
+    skippedReasons: countSkippedReasons(sources),
+    totals: {
+      fetched: sourceOutcomeCounts.fetched,
+      processed: sourceOutcomeCounts.processed,
+      rawItems: rawItemRepository.listRawItems().length,
+      articles: articleRepository.listArticles().length,
+      signals: signalRepository.listSignals().length
+    },
+    pipeline: {
+      fetch: fetchSummary,
+      process: processSummary,
+      dedupe: dedupeSummary,
+      cluster: clusterSummary,
+      topics: topicSummary,
+      scoring: scoringSummary,
+      enrichment: enrichmentSummary
+    }
+  };
+}
+
+function evaluateSourceReadiness({ source, config }) {
+  const base = {
+    sourceId: source.id,
+    sourceName: source.name,
+    sourceType: source.sourceType
+  };
+
+  if (!source.enabled) {
+    return { ...base, status: 'skipped', reason: 'disabled' };
+  }
+  if (!supportedSourceTypes.has(source.sourceType)) {
+    return { ...base, status: 'skipped', reason: 'unsupported_source_type' };
+  }
+
+  const endpointReason = missingEndpointReason(source);
+  if (endpointReason) {
+    return { ...base, status: 'skipped', reason: endpointReason };
+  }
+
+  if (source.credentialRef && !credentialOptionalSourceTypes.has(source.sourceType) && !secretForRef(source.credentialRef, config)) {
+    return { ...base, status: 'skipped', reason: 'credential_missing' };
+  }
+  if (source.credentialRef && credentialOptionalSourceTypes.has(source.sourceType) && !secretForRef(source.credentialRef, config)) {
+    return { ...base, status: 'skipped', reason: 'credential_missing' };
+  }
+
+  return { ...base, status: 'ready' };
+}
+
+function activateConfiguredLiveSources({ sourceService, config }) {
+  for (const source of sourceService.listSources()) {
+    if (source.sourceType === 'newsapi' || source.sourceType === 'product_hunt') {
+      if (source.credentialRef) {
+        sourceService.enableSource(source.id);
+      }
+      continue;
+    }
+
+    if (source.sourceType === 'semantic_scholar') {
+      if (source.credentialRef && !secretForRef(source.credentialRef, config)) {
+        sourceService.updateSource(source.id, {
+          enabled: true,
+          credentialRef: undefined
+        });
+        continue;
+      }
+      sourceService.enableSource(source.id);
+      continue;
+    }
+
+    if (source.sourceType === 'crossref') {
+      sourceService.enableSource(source.id);
+    }
+  }
+}
+
+function missingEndpointReason(source) {
+  if ((source.sourceType === 'rss' || source.sourceType === 'atom') && !source.feedUrl) {
+    return 'missing_feed_url';
+  }
+  if (['newsapi', 'arxiv', 'semantic_scholar', 'product_hunt', 'crossref'].includes(source.sourceType) && !source.apiEndpoint) {
+    return 'missing_api_endpoint';
+  }
+  return undefined;
+}
+
+function createLiveAdapters({ config = {}, fetchImpl = globalThis.fetch, now = () => new Date() } = {}) {
+  const getSecret = (name) => secretForRef(name, config);
+  return {
+    rss: new RssAtomAdapter({ fetchImpl, now }),
+    atom: new RssAtomAdapter({ fetchImpl, now }),
+    newsapi: new NewsApiAdapter({ fetchImpl, getSecret, now }),
+    arxiv: new ArxivAdapter({ fetchImpl, now }),
+    semantic_scholar: new SemanticScholarAdapter({ fetchImpl, getSecret, now }),
+    hacker_news: new HackerNewsAdapter({ fetchImpl, now }),
+    product_hunt: new ProductHuntAdapter({ fetchImpl, getSecret, now }),
+    crossref: new CrossrefAdapter({
+      fetchImpl,
+      contactEmail: config.crossrefContactEmail,
+      now
+    })
+  };
+}
+
+function wrapAdapters(adapters, { maxItemsPerSource }) {
+  const wrapped = {};
+  for (const [sourceType, adapter] of Object.entries(adapters || {})) {
+    wrapped[sourceType] = {
+      async fetchSource(source) {
+        const records = await adapter.fetchSource(source);
+        return asArray(records).slice(0, source.fetchLimit || maxItemsPerSource);
+      }
+    };
+  }
+  return wrapped;
+}
+
+function createLiveEnrichmentProvider({ config = {}, fetchImpl = globalThis.fetch } = {}) {
+  if (config.secrets?.enrichment && config.enrichment?.baseUrl && config.enrichment?.model && config.enrichment.model !== 'mock-enrichment') {
+    return createOpenAICompatibleEnrichmentProvider({
+      apiKey: config.secrets.enrichment,
+      model: config.enrichment.model,
+      baseUrl: config.enrichment.baseUrl,
+      fetchImpl
+    });
+  }
+  return createMetadataEnrichmentProvider();
+}
+
+function createMetadataEnrichmentProvider() {
+  return {
+    name: 'metadata-enrichment',
+    async generate(context) {
+      const sources = asArray(context.sources);
+      const articles = asArray(context.articles);
+      const leadSource = sources[0];
+      return {
+        aiBrief: `${context.signal.title} is backed by ${sources.length} live source${sources.length === 1 ? '' : 's'}.`,
+        keyPoints: sources.slice(0, 3).map((source) => ({
+          text: `${source.name} provided live evidence for this signal.`,
+          sourceIds: [source.id]
+        })),
+        timeline: articles.slice(0, 4).map((article) => ({
+          label: `${article.title} was captured from ${sourceNameFor(sources, article.sourceId)}.`,
+          at: article.publishedAt,
+          sourceIds: [article.sourceId]
+        })),
+        sourceMix: sources.map((source) => ({
+          sourceId: source.id,
+          sourceName: source.name,
+          role: roleForSource(source, leadSource?.id)
+        })),
+        nextWatch: 'Watch for additional source confirmations, follow-up analysis, and official updates.',
+        relatedSignalIds: []
+      };
+    }
+  };
+}
+
+function applyFetchOutcomes({ queue, runId, outcomesBySourceId }) {
+  const jobs = queue.list('fetch').filter((job) => job.payload?.runId === runId);
+  for (const job of jobs) {
+    const outcome = outcomesBySourceId.get(job.payload?.sourceId);
+    if (!outcome) {
+      continue;
+    }
+    if (job.status === 'completed') {
+      outcome.status = 'succeeded';
+      outcome.reason = undefined;
+      outcome.fetched = job.result?.fetched || 0;
+      outcome.created = job.result?.created || 0;
+      outcome.duplicates = job.result?.duplicates || 0;
+      continue;
+    }
+    if (job.status === 'failed' || job.lastErrorCategory) {
+      outcome.status = 'failed';
+      outcome.reason = job.lastErrorCategory || 'fetch_failed';
+      outcome.errorCategory = job.lastErrorCategory || 'fetch_failed';
+    }
+  }
+}
+
+function applyProcessOutcomes({ processSummary, outcomesBySourceId }) {
+  for (const item of processSummary.results || []) {
+    const sourceId = item.result?.sourceId;
+    if (item.status !== 'completed' || !sourceId) {
+      continue;
+    }
+    const outcome = outcomesBySourceId.get(sourceId);
+    if (outcome) {
+      outcome.processed = (outcome.processed || 0) + 1;
+    }
+  }
+}
+
+function countSourceOutcomes(sources) {
+  const counts = {
+    ready: 0,
+    skipped: 0,
+    succeeded: 0,
+    failed: 0,
+    fetched: 0,
+    processed: 0
+  };
+
+  for (const source of sources) {
+    if (source.status === 'ready' || source.status === 'succeeded' || source.status === 'failed') {
+      counts.ready += 1;
+    }
+    if (source.status === 'skipped') {
+      counts.skipped += 1;
+    }
+    if (source.status === 'succeeded') {
+      counts.succeeded += 1;
+    }
+    if (source.status === 'failed') {
+      counts.failed += 1;
+    }
+    counts.fetched += source.fetched || 0;
+    counts.processed += source.processed || 0;
+  }
+
+  return counts;
+}
+
+function countSkippedReasons(sources) {
+  const counts = {};
+  for (const source of sources) {
+    if (source.status !== 'skipped' || !source.reason) {
+      continue;
+    }
+    counts[source.reason] = (counts[source.reason] || 0) + 1;
+  }
+  return counts;
+}
+
+function createInitialReport({ now, sources }) {
+  const at = now().toISOString();
+  return {
+    mode: 'live',
+    runId: undefined,
+    startedAt: undefined,
+    completedAt: undefined,
+    lastLiveFetchAt: undefined,
+    sources: asArray(sources).map((source) => ({
+      sourceId: source.id,
+      sourceName: source.name,
+      sourceType: source.sourceType,
+      status: 'pending',
+      fetched: 0,
+      processed: 0
+    })),
+    sourceOutcomeCounts: emptyOutcomeCounts(),
+    skippedReasons: {},
+    totals: {
+      fetched: 0,
+      processed: 0,
+      rawItems: 0,
+      articles: 0,
+      signals: 0
+    },
+    createdAt: at
+  };
+}
+
+function emptyOutcomeCounts() {
+  return {
+    ready: 0,
+    skipped: 0,
+    succeeded: 0,
+    failed: 0,
+    fetched: 0,
+    processed: 0
+  };
+}
+
+function secretForRef(ref, config) {
+  if (!ref) {
+    return undefined;
+  }
+  const byRef = {
+    NEWSAPI_KEY: config.secrets?.newsapi,
+    PRODUCT_HUNT_TOKEN: config.secrets?.productHunt,
+    SEMANTIC_SCHOLAR_API_KEY: config.secrets?.semanticScholar
+  };
+  return byRef[ref] || config.secrets?.[ref] || process.env[ref];
+}
+
+function createRunId(date) {
+  return `live_${date.toISOString().replace(/[-:.]/g, '').replace('T', '_').replace('Z', '')}`;
+}
+
+function withRequestTimeout(fetchImpl, timeoutMs) {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return fetchImpl;
+  }
+
+  return async function fetchWithRequestTimeout(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const upstreamSignal = options.signal;
+    if (upstreamSignal?.aborted) {
+      controller.abort();
+    } else if (upstreamSignal?.addEventListener) {
+      upstreamSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      return await fetchImpl(url, {
+        ...options,
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
+
+function isStale(value, now, staleAfterMs) {
+  if (!value) {
+    return true;
+  }
+  return now.getTime() - new Date(value).getTime() > staleAfterMs;
+}
+
+function roleForSource(source, leadSourceId) {
+  if (source.id === leadSourceId) {
+    return 'lead';
+  }
+  if (source.family === 'company_announcement') {
+    return 'official';
+  }
+  if (source.family === 'research') {
+    return 'research';
+  }
+  if (source.family === 'community') {
+    return 'community';
+  }
+  if (source.family === 'product_launch') {
+    return 'product';
+  }
+  return 'supporting';
+}
+
+function sourceNameFor(sources, sourceId) {
+  return sources.find((source) => source.id === sourceId)?.name || 'source';
+}
+
+function asArray(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+}
+
+function clone(value) {
+  return value === undefined ? undefined : structuredClone(value);
+}

@@ -125,6 +125,19 @@ export async function createDemoRuntime({ now = () => new Date(nowIso) } = {}) {
     sourceService,
     topicRepository,
     scoreComponentRepository,
+    dataStatus: {
+      mode: 'demo',
+      stale: false,
+      lastUpdatedAt: now().toISOString(),
+      sourceOutcomeCounts: {
+        ready: 0,
+        skipped: 0,
+        succeeded: 0,
+        failed: 0,
+        fetched: rawItemRepository.listRawItems().length,
+        processed: articleRepository.listArticles().length
+      }
+    },
     now
   });
 

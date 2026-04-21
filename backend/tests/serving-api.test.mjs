@@ -261,6 +261,17 @@ function seedServingFixture() {
     sourceService: runtime.sourceService,
     topicRepository: runtime.topicRepository,
     scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: {
+      mode: 'demo',
+      stale: false,
+      lastUpdatedAt: '2026-04-21T12:00:00.000Z',
+      sourceOutcomeCounts: {
+        ready: 0,
+        skipped: 0,
+        succeeded: 0,
+        failed: 0
+      }
+    },
     now: () => new Date('2026-04-21T12:00:00.000Z')
   });
   return {
@@ -311,6 +322,49 @@ test('GET /api/home returns lead signal, ranked signals, stats, archives, and ti
     assert.ok(body.dateSummaries.some((item) => item.date === '2026-04-21'));
     assert.ok(body.tickerItems.some((item) => item.signalId === leadSignal.id && item.text.includes('OpenAI')));
     assert.equal(body.dataWindow.includesToday, true);
+    assert.equal(body.dataStatus.mode, 'demo');
+  });
+});
+
+test('GET /api/home exposes live and stale freshness metadata without secrets', async () => {
+  const { runtime, leadSignal } = seedServingFixture();
+  const servingService = createNewsServingService({
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicRepository: runtime.topicRepository,
+    scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: () => ({
+      mode: 'live',
+      runId: 'live_20260421_120000',
+      lastLiveFetchAt: '2026-04-21T11:00:00.000Z',
+      stale: true,
+      sourceOutcomeCounts: {
+        ready: 4,
+        skipped: 2,
+        succeeded: 3,
+        failed: 1,
+        fetched: 12,
+        processed: 10
+      },
+      skippedReasons: {
+        credential_missing: 2
+      }
+    }),
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const { response, body } = await getJson(baseUrl, '/api/home');
+    const serialized = JSON.stringify(body);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.leadSignal.id, leadSignal.id);
+    assert.equal(body.dataStatus.mode, 'live');
+    assert.equal(body.dataStatus.stale, true);
+    assert.equal(body.dataStatus.sourceOutcomeCounts.succeeded, 3);
+    assert.equal(body.dataStatus.skippedReasons.credential_missing, 2);
+    assert.doesNotMatch(serialized, /NEWSAPI_KEY|PRODUCT_HUNT_TOKEN|secret/i);
   });
 });
 
