@@ -85,3 +85,22 @@ When a real provider is wired, configure these project-root `.env` values:
 Generated enrichment output is validated before it is stored. It must stay short, include source attribution, and must not expose copied full article text from sources whose policy forbids full-text display.
 
 Run `npm run backend:enrichment:smoke` after configuring those variables to verify provider connectivity and output shape. The script prints the generated structured enrichment result but never prints the API key.
+
+## Serving APIs
+
+The API server can expose product-facing data through a first-party serving service. Current MVP routes:
+
+- `GET /api/home`
+- `GET /api/signals/:id`
+- `GET /api/sources`
+- `GET /api/sources/:family`
+- `GET /api/sources/:family/:sourceId`
+- `GET /api/dates/today`
+- `GET /api/dates/yesterday`
+- `GET /api/dates/week`
+- `GET /api/dates?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- `GET /api/topics`
+- `GET /api/topics/:slug`
+- `GET /api/search?q=&topic=&sourceFamily=&from=&to=`
+
+Product-facing responses include source attribution and original URLs. They exclude backend-only `textForAI` and do not expose copied full article text from restricted sources.

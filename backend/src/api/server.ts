@@ -5,35 +5,110 @@ import { loadRuntimeConfig } from '../config/runtime-config.ts';
 import { createHealthSnapshot } from '../health.ts';
 import { createLogger } from '../logging/logger.ts';
 
-export function createApiServer({ config = loadConfig(), logger = createLogger() } = {}) {
+export function createApiServer({ config = loadConfig(), logger = createLogger(), servingService } = {}) {
   return createServer((request, response) => {
     const startedAt = Date.now();
     const url = new URL(request.url || '/', 'http://localhost');
+    let status = 200;
 
-    if (url.pathname === '/healthz' || url.pathname === '/readyz') {
-      const body = createHealthSnapshot({
-        service: 'api',
-        config,
-        checks: { database: Boolean(config.databaseUrl), queue: Boolean(config.redisUrl) }
-      });
-      writeJson(response, 200, body);
+    try {
+      if (url.pathname === '/healthz' || url.pathname === '/readyz') {
+        const body = createHealthSnapshot({
+          service: 'api',
+          config,
+          checks: { database: Boolean(config.databaseUrl), queue: Boolean(config.redisUrl) }
+        });
+        status = 200;
+        writeJson(response, 200, body);
+        return;
+      }
+
+      if (url.pathname.startsWith('/api/')) {
+        const result = routeApiRequest({ request, url, servingService });
+        status = result.status;
+        writeJson(response, result.status, result.body);
+        return;
+      }
+
+      status = 404;
+      writeJson(response, 404, { error: 'not_found' });
+    } catch (error) {
+      status = 500;
+      writeJson(response, 500, { error: 'internal_error', message: error.message });
+    } finally {
       logger.info('http_request', {
         method: request.method,
         path: url.pathname,
-        status: 200,
+        status,
         durationMs: Date.now() - startedAt
       });
-      return;
     }
-
-    writeJson(response, 404, { error: 'not_found' });
-    logger.info('http_request', {
-      method: request.method,
-      path: url.pathname,
-      status: 404,
-      durationMs: Date.now() - startedAt
-    });
   });
+}
+
+function routeApiRequest({ request, url, servingService }) {
+  if (request.method !== 'GET') {
+    return { status: 405, body: { error: 'method_not_allowed' } };
+  }
+  if (!servingService) {
+    return { status: 503, body: { error: 'serving_service_unavailable' } };
+  }
+
+  const parts = url.pathname.split('/').filter(Boolean);
+
+  if (url.pathname === '/api/home') {
+    return ok(servingService.getHome());
+  }
+  if (parts[1] === 'signals' && parts[2]) {
+    const detail = servingService.getSignalDetail(parts[2]);
+    return detail ? ok(detail) : notFound();
+  }
+  if (url.pathname === '/api/sources') {
+    return ok(servingService.listSources());
+  }
+  if (parts[1] === 'sources' && parts[2] && parts[3]) {
+    const archive = servingService.getSourceArchive(decodeURIComponent(parts[2]), decodeURIComponent(parts[3]));
+    return archive ? ok(archive) : notFound();
+  }
+  if (parts[1] === 'sources' && parts[2]) {
+    const archive = servingService.getSourceFamilyArchive(decodeURIComponent(parts[2]));
+    return archive ? ok(archive) : notFound();
+  }
+  if (parts[1] === 'dates' && parts[2]) {
+    return ok(servingService.getDateArchive({ label: decodeURIComponent(parts[2]) }));
+  }
+  if (url.pathname === '/api/dates') {
+    return ok(servingService.getDateArchive({
+      from: url.searchParams.get('from'),
+      to: url.searchParams.get('to')
+    }));
+  }
+  if (url.pathname === '/api/topics') {
+    return ok(servingService.listTopics());
+  }
+  if (parts[1] === 'topics' && parts[2]) {
+    const archive = servingService.getTopicArchive(decodeURIComponent(parts[2]));
+    return archive ? ok(archive) : notFound();
+  }
+  if (url.pathname === '/api/search') {
+    return ok(servingService.search({
+      q: url.searchParams.get('q') || '',
+      topic: url.searchParams.get('topic') || undefined,
+      sourceFamily: url.searchParams.get('sourceFamily') || undefined,
+      from: url.searchParams.get('from') || undefined,
+      to: url.searchParams.get('to') || undefined
+    }));
+  }
+
+  return notFound();
+}
+
+function ok(body) {
+  return { status: 200, body };
+}
+
+function notFound() {
+  return { status: 404, body: { error: 'not_found' } };
 }
 
 function writeJson(response, statusCode, body) {

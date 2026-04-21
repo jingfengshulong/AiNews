@@ -16,3 +16,4 @@ import './enrichment.test.mjs';
 import './fetch-job-handler.test.mjs';
 import './process-job-handler.test.mjs';
 import './health.test.mjs';
+import './serving-api.test.mjs';

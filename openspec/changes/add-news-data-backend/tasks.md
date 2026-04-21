@@ -43,14 +43,14 @@
 
 ## 5. Serving APIs
 
-- [ ] 5.1 Implement `GET /api/home` with lead signal, ranked signals, stats, source summaries, date summaries, and ticker items.
-- [ ] 5.2 Implement `GET /api/signals/:id` with full detail data, supporting sources, source timeline, source mix, and related signals.
-- [ ] 5.3 Implement source archive endpoints for source families and individual sources.
-- [ ] 5.4 Implement date archive endpoints for today, yesterday, weekly, and arbitrary date range queries.
-- [ ] 5.5 Implement topic list and topic detail endpoints.
-- [ ] 5.6 Implement search endpoint with query text, source family, topic, and date range filters.
-- [ ] 5.7 Ensure product-facing API responses include attribution and original links while excluding disallowed full text.
-- [ ] 5.8 Add API tests covering homepage, detail, source archive, date archive, topic archive, search, not-found, and attribution scenarios.
+- [x] 5.1 Implement `GET /api/home` with lead signal, ranked signals, stats, source summaries, date summaries, and ticker items.
+- [x] 5.2 Implement `GET /api/signals/:id` with full detail data, supporting sources, source timeline, source mix, and related signals.
+- [x] 5.3 Implement source archive endpoints for source families and individual sources.
+- [x] 5.4 Implement date archive endpoints for today, yesterday, weekly, and arbitrary date range queries.
+- [x] 5.5 Implement topic list and topic detail endpoints.
+- [x] 5.6 Implement search endpoint with query text, source family, topic, and date range filters.
+- [x] 5.7 Ensure product-facing API responses include attribution and original links while excluding disallowed full text.
+- [x] 5.8 Add API tests covering homepage, detail, source archive, date archive, topic archive, search, not-found, and attribution scenarios.
 
 ## 6. Operational Verification
 
