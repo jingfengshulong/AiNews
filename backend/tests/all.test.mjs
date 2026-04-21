@@ -1,0 +1,15 @@
+import './config.test.mjs';
+import './migrations.test.mjs';
+import './source-management.test.mjs';
+import './ingestion-queue.test.mjs';
+import './redis-queue.test.mjs';
+import './raw-items.test.mjs';
+import './rss-atom-adapter.test.mjs';
+import './other-source-adapters.test.mjs';
+import './article-normalization.test.mjs';
+import './article-dedupe.test.mjs';
+import './signal-clustering.test.mjs';
+import './topic-classification.test.mjs';
+import './fetch-job-handler.test.mjs';
+import './process-job-handler.test.mjs';
+import './health.test.mjs';
