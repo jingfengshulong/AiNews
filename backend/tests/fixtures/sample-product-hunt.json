@@ -1,0 +1,41 @@
+{
+  "data": {
+    "posts": {
+      "totalCount": 1,
+      "edges": [
+        {
+          "node": {
+            "id": "ph-post-1",
+            "name": "AgentOps AI",
+            "tagline": "Observability for production AI agents",
+            "description": "AgentOps AI helps teams monitor multi-step AI agents in production.",
+            "slug": "agentops-ai",
+            "url": "https://www.producthunt.com/posts/agentops-ai",
+            "website": "https://example.com/agentops-ai",
+            "createdAt": "2026-04-21T08:00:00Z",
+            "featuredAt": "2026-04-21T09:00:00Z",
+            "votesCount": 420,
+            "commentsCount": 38,
+            "reviewsCount": 12,
+            "dailyRank": 2,
+            "thumbnail": {
+              "url": "https://example.com/thumbnail.png"
+            },
+            "topics": {
+              "edges": [
+                { "node": { "name": "Artificial Intelligence", "slug": "artificial-intelligence" } },
+                { "node": { "name": "Developer Tools", "slug": "developer-tools" } }
+              ]
+            },
+            "makers": [
+              { "name": "Pat Maker", "username": "patmaker", "url": "https://www.producthunt.com/@patmaker" }
+            ],
+            "productLinks": [
+              { "type": "Website", "url": "https://example.com/agentops-ai" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

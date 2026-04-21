@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>AI Lab News</title>
+    <link>https://example.com/news</link>
+    <item>
+      <guid isPermaLink="false">release-2026-04-21</guid>
+      <title><![CDATA[Introducing Example Agent 2]]></title>
+      <link>https://example.com/news/example-agent-2</link>
+      <pubDate>Tue, 21 Apr 2026 08:15:00 GMT</pubDate>
+      <dc:creator>Example Research</dc:creator>
+      <category>Agents</category>
+      <category>Product</category>
+      <description><![CDATA[A short product update for Example Agent 2.]]></description>
+      <content:encoded><![CDATA[Longer source-owned article body should stay inside raw payload only.]]></content:encoded>
+    </item>
+  </channel>
+</rss>

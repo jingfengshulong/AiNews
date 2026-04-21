@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title>ArXiv Query: search_query=cat:cs.AI</title>
+  <entry>
+    <id>http://arxiv.org/abs/2604.12345v1</id>
+    <updated>2026-04-21T09:00:00Z</updated>
+    <published>2026-04-20T18:30:00Z</published>
+    <title>Agentic Retrieval for Enterprise AI Systems</title>
+    <summary>
+      We introduce an agentic retrieval method for enterprise AI systems. The method combines structured planning, tool use, and attribution-aware retrieval.
+    </summary>
+    <author>
+      <name>Ada Example</name>
+    </author>
+    <author>
+      <name>Ben Researcher</name>
+    </author>
+    <arxiv:comment>18 pages, 4 figures</arxiv:comment>
+    <arxiv:journal_ref>Example AI Journal 2026</arxiv:journal_ref>
+    <arxiv:primary_category term="cs.AI" scheme="http://arxiv.org/schemas/atom" />
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom" />
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom" />
+    <link href="http://arxiv.org/abs/2604.12345v1" rel="alternate" type="text/html" />
+    <link title="pdf" href="http://arxiv.org/pdf/2604.12345v1" rel="related" type="application/pdf" />
+  </entry>
+</feed>

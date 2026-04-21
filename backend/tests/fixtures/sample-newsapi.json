@@ -1,0 +1,19 @@
+{
+  "status": "ok",
+  "totalResults": 1,
+  "articles": [
+    {
+      "source": {
+        "id": "techcrunch",
+        "name": "TechCrunch"
+      },
+      "author": "Jane Reporter",
+      "title": "AI agent startup launches enterprise workflow tool",
+      "description": "The startup says its new agent product can automate multi-step enterprise workflows.",
+      "url": "https://techcrunch.com/2026/04/21/ai-agent-startup-enterprise-workflow/",
+      "urlToImage": "https://techcrunch.com/example.jpg",
+      "publishedAt": "2026-04-21T10:00:00Z",
+      "content": "The startup says its new agent product can automate multi-step enterprise workflows... [+1200 chars]"
+    }
+  ]
+}

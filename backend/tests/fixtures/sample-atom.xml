@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Research Updates</title>
+  <entry>
+    <id>tag:example.com,2026:research-42</id>
+    <title>New multimodal benchmark</title>
+    <link rel="alternate" href="https://example.com/research/multimodal-benchmark" />
+    <updated>2026-04-21T07:00:00Z</updated>
+    <published>2026-04-21T06:45:00Z</published>
+    <author>
+      <name>Example Lab</name>
+    </author>
+    <category term="Research" />
+    <summary>A benchmark update for multimodal agents.</summary>
+  </entry>
+</feed>

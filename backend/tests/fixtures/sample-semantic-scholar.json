@@ -1,0 +1,48 @@
+{
+  "total": 1,
+  "offset": 0,
+  "data": [
+    {
+      "paperId": "ss-paper-1",
+      "externalIds": {
+        "DOI": "10.0000/example.1",
+        "ArXiv": "2604.12345"
+      },
+      "url": "https://www.semanticscholar.org/paper/ss-paper-1",
+      "title": "Benchmarks for Tool-Using Language Agents",
+      "abstract": "This paper evaluates tool-using language agents on multi-step research tasks.",
+      "year": 2026,
+      "publicationDate": "2026-04-19",
+      "authors": [
+        { "authorId": "1001", "name": "Chen Example" },
+        { "authorId": "1002", "name": "Dia Researcher" }
+      ],
+      "venue": "Example AI Conference",
+      "publicationVenue": {
+        "id": "venue-1",
+        "name": "Example AI Conference",
+        "type": "conference"
+      },
+      "fieldsOfStudy": ["Computer Science"],
+      "s2FieldsOfStudy": [
+        { "category": "Artificial Intelligence", "source": "s2-fos-model" }
+      ],
+      "citationCount": 42,
+      "referenceCount": 18,
+      "influentialCitationCount": 7,
+      "isOpenAccess": true,
+      "openAccessPdf": {
+        "url": "https://example.com/ss-paper-1.pdf",
+        "status": "GOLD"
+      },
+      "publicationTypes": ["Conference"],
+      "journal": {
+        "name": "Example Journal"
+      },
+      "tldr": {
+        "model": "tldr@v2.0.0",
+        "text": "A benchmark for evaluating tool-using agents."
+      }
+    }
+  ]
+}
