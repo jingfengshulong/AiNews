@@ -5,3 +5,5 @@ node_modules/
 .env.local
 .env.*.local
 !.env.example
+backend/demo-server.log
+backend/demo-server.err

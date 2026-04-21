@@ -1,11 +1,13 @@
 import { createServer } from 'node:http';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../config/env.ts';
 import { loadRuntimeConfig } from '../config/runtime-config.ts';
 import { createHealthSnapshot } from '../health.ts';
 import { createLogger } from '../logging/logger.ts';
 
-export function createApiServer({ config = loadConfig(), logger = createLogger(), servingService } = {}) {
+export function createApiServer({ config = loadConfig(), logger = createLogger(), servingService, staticRoot } = {}) {
   return createServer((request, response) => {
     const startedAt = Date.now();
     const url = new URL(request.url || '/', 'http://localhost');
@@ -28,6 +30,14 @@ export function createApiServer({ config = loadConfig(), logger = createLogger()
         status = result.status;
         writeJson(response, result.status, result.body);
         return;
+      }
+
+      if (staticRoot) {
+        const served = writeStaticFile({ response, url, staticRoot });
+        if (served) {
+          status = 200;
+          return;
+        }
       }
 
       status = 404;
@@ -111,9 +121,67 @@ function notFound() {
   return { status: 404, body: { error: 'not_found' } };
 }
 
+function writeStaticFile({ response, url, staticRoot }) {
+  const filePath = resolveStaticPath({ staticRoot, pathname: url.pathname });
+  if (!filePath || !existsSync(filePath) || !statSync(filePath).isFile()) {
+    return false;
+  }
+
+  response.writeHead(200, {
+    'content-type': contentType(filePath),
+    'cache-control': 'no-store'
+  });
+  response.end(readFileSync(filePath));
+  return true;
+}
+
+function resolveStaticPath({ staticRoot, pathname }) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return undefined;
+  }
+  if (decoded.includes('\0')) {
+    return undefined;
+  }
+
+  const relativePath = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
+  const extension = extname(relativePath).toLowerCase();
+  if (!staticExtensions.has(extension)) {
+    return undefined;
+  }
+
+  const root = resolve(staticRoot);
+  const filePath = resolve(root, relativePath);
+  if (filePath !== root && !filePath.startsWith(`${root}${sep}`)) {
+    return undefined;
+  }
+  return filePath;
+}
+
+function contentType(filePath) {
+  const extension = extname(filePath).toLowerCase();
+  return contentTypes[extension] || 'application/octet-stream';
+}
+
+const staticExtensions = new Set(['.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico']);
+const contentTypes = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+
 function writeJson(response, statusCode, body) {
   response.writeHead(statusCode, {
-    'content-type': 'application/json; charset=utf-8'
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*'
   });
   response.end(JSON.stringify(body));
 }

@@ -17,3 +17,5 @@ import './fetch-job-handler.test.mjs';
 import './process-job-handler.test.mjs';
 import './health.test.mjs';
 import './serving-api.test.mjs';
+import './operational-flow.test.mjs';
+import './frontend-api-rendering.test.mjs';

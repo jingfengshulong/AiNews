@@ -6,7 +6,10 @@
     "backend:api": "node --loader ./backend/scripts/ts-loader.mjs backend/src/api/server.ts",
     "backend:worker": "node --loader ./backend/scripts/ts-loader.mjs backend/src/worker/worker.ts",
     "backend:migrate:plan": "node --loader ./backend/scripts/ts-loader.mjs backend/src/db/migration-plan.ts",
-    "backend:enrichment:smoke": "node --loader ./backend/scripts/ts-loader.mjs backend/scripts/run-enrichment-smoke-test.mjs"
+    "backend:enrichment:smoke": "node --loader ./backend/scripts/ts-loader.mjs backend/scripts/run-enrichment-smoke-test.mjs",
+    "backend:ingest:demo": "node --loader ./backend/scripts/ts-loader.mjs backend/scripts/run-demo-ingestion.mjs",
+    "backend:demo:smoke": "node --loader ./backend/scripts/ts-loader.mjs backend/scripts/run-demo-smoke.mjs",
+    "backend:demo": "node --loader ./backend/scripts/ts-loader.mjs backend/scripts/start-demo-api.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

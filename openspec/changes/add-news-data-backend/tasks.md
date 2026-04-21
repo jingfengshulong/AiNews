@@ -54,8 +54,8 @@
 
 ## 6. Operational Verification
 
-- [ ] 6.1 Add local development scripts for database migration, worker startup, API startup, and one-shot ingestion.
-- [ ] 6.2 Add deterministic fixtures for RSS, arXiv, NewsAPI, Hacker News, Product Hunt, Semantic Scholar, and Crossref adapters.
-- [ ] 6.3 Add an end-to-end development flow that seeds sources, ingests fixtures, processes signals, and serves API responses.
-- [ ] 6.4 Document source onboarding rules, usage policy handling, and attribution expectations.
-- [ ] 6.5 Run OpenSpec validation and the backend test suite before marking the change implementation complete.
+- [x] 6.1 Add local development scripts for database migration, worker startup, API startup, and one-shot ingestion.
+- [x] 6.2 Add deterministic fixtures for RSS, arXiv, NewsAPI, Hacker News, Product Hunt, Semantic Scholar, and Crossref adapters.
+- [x] 6.3 Add an end-to-end development flow that seeds sources, ingests fixtures, processes signals, and serves API responses.
+- [x] 6.4 Document source onboarding rules, usage policy handling, and attribution expectations.
+- [x] 6.5 Run OpenSpec validation and the backend test suite before marking the change implementation complete.

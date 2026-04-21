@@ -19,6 +19,9 @@ This backend is the first implementation slice for the OpenSpec change `add-news
 - `npm run backend:worker` starts the worker skeleton.
 - `npm run backend:migrate:plan` prints pending migration ids for local inspection.
 - `npm run backend:enrichment:smoke` calls the configured AI enrichment provider with one fixture signal and validates the structured output.
+- `npm run backend:ingest:demo` builds a deterministic in-memory demo ingestion flow and prints the generated summary.
+- `npm run backend:demo:smoke` starts the demo API on a random port, verifies `/api/home`, and verifies the static homepage is served.
+- `npm run backend:demo` starts the local demo API and static frontend at `http://localhost:4100/`.
 
 ## Local Configuration
 
@@ -39,6 +42,8 @@ Current source and enrichment variables:
 The current RSS/Atom source inventory is documented in [docs/rss-source-inventory.md](docs/rss-source-inventory.md). Official AI company pages do not all expose RSS; sources without a confirmed feed remain disabled until a dedicated adapter is implemented.
 
 Non-RSS source adapters are documented in [docs/data-source-adapters.md](docs/data-source-adapters.md).
+
+Source onboarding, usage policy, and attribution rules are documented in [docs/source-onboarding.md](docs/source-onboarding.md).
 
 ## Article Normalization
 
@@ -104,3 +109,5 @@ The API server can expose product-facing data through a first-party serving serv
 - `GET /api/search?q=&topic=&sourceFamily=&from=&to=`
 
 Product-facing responses include source attribution and original URLs. They exclude backend-only `textForAI` and do not expose copied full article text from restricted sources.
+
+For local visual verification, run `npm run backend:demo` and open `http://localhost:4100/`. The static frontend will call the first-party APIs and render backend-generated demo `Signal` data.
