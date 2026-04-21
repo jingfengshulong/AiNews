@@ -18,6 +18,7 @@ This backend is the first implementation slice for the OpenSpec change `add-news
 - `npm run backend:api` starts the health-only API skeleton.
 - `npm run backend:worker` starts the worker skeleton.
 - `npm run backend:migrate:plan` prints pending migration ids for local inspection.
+- `npm run backend:enrichment:smoke` calls the configured AI enrichment provider with one fixture signal and validates the structured output.
 
 ## Local Configuration
 
@@ -73,7 +74,7 @@ Successful fetch jobs persist raw records, enqueue process jobs for new raw item
 
 ## AI Enrichment
 
-Signal enrichment runs asynchronously through the `enrichment` queue lane. The current implementation uses a provider interface, so tests can run with a deterministic provider while a real model provider is added later.
+Signal enrichment runs asynchronously through the `enrichment` queue lane. The current implementation uses a provider interface, so tests can run with a deterministic provider while production can use an OpenAI-compatible chat completions endpoint.
 
 When a real provider is wired, configure these project-root `.env` values:
 
@@ -82,3 +83,5 @@ When a real provider is wired, configure these project-root `.env` values:
 - `AI_ENRICHMENT_BASE_URL`: provider API base URL when using a custom or compatible endpoint.
 
 Generated enrichment output is validated before it is stored. It must stay short, include source attribution, and must not expose copied full article text from sources whose policy forbids full-text display.
+
+Run `npm run backend:enrichment:smoke` after configuring those variables to verify provider connectivity and output shape. The script prints the generated structured enrichment result but never prints the API key.
