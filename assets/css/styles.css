@@ -248,6 +248,53 @@ input {
   border-top: 1px solid var(--line);
 }
 
+.state-panel {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.state-panel h2 {
+  margin: 8px 0 0;
+  font-size: 22px;
+  line-height: 1.35;
+}
+
+.state-panel p,
+.state-entry p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.state-kicker,
+.state-action,
+.state-metrics {
+  color: var(--cyan);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.state-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.state-metrics span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+.state-action {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--lime);
+}
+
 .ranking-item,
 .entry-row,
 .result-row,

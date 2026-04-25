@@ -29,6 +29,7 @@
 
   hydratePage().catch((error) => {
     console.warn("API rendering skipped:", error.message);
+    renderPageUnavailable(error);
   });
 
   async function hydratePage() {
@@ -53,8 +54,10 @@
   }
 
   async function hydrateHomePage() {
+    setText(".footer-note", formatDataStatus({ mode: "live", state: "loading", sourceOutcomeCounts: {} }));
     const home = await fetchApi("/api/home");
     if (!home.leadSignal) {
+      renderHomeState(home, home.dataStatus?.state || "empty_live");
       return;
     }
 
@@ -73,7 +76,7 @@
 
     const rankingRoot = document.querySelector(".ranking-list");
     if (rankingRoot) {
-      rankingRoot.innerHTML = home.rankedSignals.slice(0, 4).map((signal, index) => `
+      rankingRoot.innerHTML = asArray(home.rankedSignals).slice(0, 4).map((signal, index) => `
         <a class="ranking-item" href="${detailHref(signal.id)}">
           <span class="rank-number">${padRank(index + 2)}</span>
           <div>
@@ -105,7 +108,7 @@
         <div>
           <div class="section-label"><span>BY SOURCE</span><a href="sources.html">VIEW ALL</a></div>
           <div class="entry-list">
-            ${home.sourceSummaries.slice(0, 5).map((item) => `
+            ${asArray(home.sourceSummaries).slice(0, 5).map((item) => `
               <a class="entry-row" href="sources.html?family=${encodeURIComponent(item.family)}">
                 <h3>${escapeHtml(item.label || item.family)}</h3>
                 <span class="source-count">${item.signalCount} signals</span>
@@ -116,7 +119,7 @@
         <div>
           <div class="section-label"><span>BY DATE</span><a href="dates.html">ARCHIVE</a></div>
           <div class="entry-list">
-            ${home.dateSummaries.slice(0, 5).map((item) => `
+            ${asArray(home.dateSummaries).slice(0, 5).map((item) => `
               <a class="entry-row" href="dates.html?date=${encodeURIComponent(item.date)}">
                 <h3>${escapeHtml(item.date)}</h3>
                 <span class="archive-date">${item.signalCount} signals</span>
@@ -129,7 +132,7 @@
 
     const ticker = document.querySelector(".ticker-track");
     if (ticker) {
-      ticker.textContent = home.tickerItems.map((item) => item.text).join(" / ");
+      ticker.textContent = asArray(home.tickerItems).map((item) => item.text).join(" / ");
     }
     setText(".footer-note", formatDataStatus(home.dataStatus));
   }
@@ -147,6 +150,7 @@
 
     const detail = await fetchApi(`/api/signals/${encodeURIComponent(id)}`);
     const signal = detail.signal;
+    setText(".footer-note", formatDataStatus(detail.dataStatus));
 
     document.title = `${signal.title} | Signal Daily`;
     setDetail("kicker", `# ${signal.id} / HOT SIGNAL`);
@@ -355,6 +359,151 @@
     root.innerHTML = (items || []).map(renderer).join("");
   }
 
+  function renderHomeState(home = {}, state = "empty_live") {
+    const copy = stateCopy(state);
+    setText(".system-label", copy.kicker);
+    setText(".hero-title", copy.title);
+    setText(".hero-summary", copy.summary);
+    const heroLink = document.querySelector(".hero-link");
+    if (heroLink) {
+      heroLink.setAttribute("href", copy.href || "sources.html");
+    }
+    const heatValue = document.querySelector(".heat-meter span:last-child");
+    if (heatValue) {
+      heatValue.textContent = "0";
+    }
+    const rankingRoot = document.querySelector(".ranking-list");
+    if (rankingRoot) {
+      rankingRoot.innerHTML = statePanel(copy, home.dataStatus);
+    }
+    const statRoot = document.querySelector(".signal-strip");
+    if (statRoot) {
+      const stats = home.stats || {};
+      statRoot.innerHTML = [
+        ["VISIBLE", stats.visibleSignals || 0],
+        ["ARTICLES", stats.articlesIndexed || 0],
+        ["SOURCES", stats.sourceCount || 0],
+        ["STATE", (home.dataStatus?.state || state).replace("_", " ").toUpperCase()]
+      ].map(([label, value]) => `
+        <div class="stat-block">
+          <span class="stat-label">${escapeHtml(label)}</span>
+          <span class="stat-value">${escapeHtml(value)}</span>
+        </div>
+      `).join("");
+    }
+    const archives = document.querySelector(".home-archives");
+    if (archives) {
+      archives.innerHTML = `
+        <div>
+          <div class="section-label"><span>BY SOURCE</span><a href="sources.html">VIEW ALL</a></div>
+          <div class="entry-list">${stateEntry("来源状态", copy.sourceLine)}</div>
+        </div>
+        <div>
+          <div class="section-label"><span>BY DATE</span><a href="dates.html">ARCHIVE</a></div>
+          <div class="entry-list">${stateEntry("刷新状态", copy.dateLine)}</div>
+        </div>
+      `;
+    }
+    const ticker = document.querySelector(".ticker-track");
+    if (ticker) {
+      ticker.textContent = copy.ticker;
+    }
+    setText(".footer-note", formatDataStatus(home.dataStatus || { mode: "live", state }));
+  }
+
+  function renderPageUnavailable(error) {
+    const status = {
+      mode: "api_unavailable",
+      state: "api_unavailable",
+      stale: true,
+      empty: true,
+      sourceOutcomeCounts: {}
+    };
+    if (page === "home") {
+      renderHomeState({ dataStatus: status, stats: {} }, "api_unavailable");
+      return;
+    }
+    setText(".footer-note", formatDataStatus(status));
+    const stat = document.querySelector(".page-stat strong");
+    if (stat) {
+      stat.textContent = "0";
+    }
+    const panel = statePanel({
+      title: "后端 API 暂不可用",
+      summary: `无法完成实时数据加载：${error.message}`,
+      action: "检查后端服务后刷新页面"
+    }, status);
+    const root = document.querySelector(".archive-grid") || document.querySelector(".topic-list") || document.querySelector(".result-list");
+    if (root) {
+      root.innerHTML = panel;
+    }
+    const searchStatus = document.getElementById("searchStatus");
+    if (searchStatus) {
+      searchStatus.textContent = "API 暂不可用，无法执行实时搜索。";
+    }
+  }
+
+  function stateCopy(state) {
+    const copies = {
+      loading: {
+        kicker: "#00 / WAITING FOR LIVE DATA",
+        title: "正在等待首次实时抓取",
+        summary: "后端已经启动，首页会在第一轮抓取、质量过滤和聚类完成后显示真实热点。",
+        sourceLine: "来源调度中，暂不展示样例资讯。",
+        dateLine: "等待第一轮刷新完成。",
+        ticker: "LIVE DATA LOADING / 等待首次实时抓取完成 /",
+        action: "稍后刷新页面"
+      },
+      empty_live: {
+        kicker: "#00 / EMPTY LIVE DATA",
+        title: "暂无可见热点",
+        summary: "实时抓取已完成，但当前没有通过时效、质量和聚类门控的资讯。原始记录仍会保留给后端处理。",
+        sourceLine: "暂无通过质量门控的可见信号。",
+        dateLine: "本轮刷新没有可展示热点。",
+        ticker: "EMPTY LIVE DATA / 没有展示静态样例内容 /",
+        action: "查看来源页确认抓取覆盖"
+      },
+      api_unavailable: {
+        kicker: "#00 / API UNAVAILABLE",
+        title: "实时数据暂不可用",
+        summary: "前端没有连接到后端 API，因此不会把静态样例误当作最新资讯展示。",
+        sourceLine: "后端 API 未响应。",
+        dateLine: "等待服务恢复后重新加载。",
+        ticker: "API UNAVAILABLE / STATIC SAMPLE HIDDEN /",
+        action: "启动后端服务后刷新"
+      }
+    };
+    return copies[state] || copies.empty_live;
+  }
+
+  function statePanel(copy, status) {
+    const counts = status?.sourceOutcomeCounts || {};
+    return `
+      <div class="state-panel">
+        <span class="state-kicker">${escapeHtml(status?.label || status?.state || "STATE")}</span>
+        <h2>${escapeHtml(copy.title)}</h2>
+        <p>${escapeHtml(copy.summary)}</p>
+        <div class="state-metrics">
+          <span>${counts.succeeded || 0} OK</span>
+          <span>${counts.failed || 0} failed</span>
+          <span>${counts.skipped || 0} skipped</span>
+        </div>
+        <span class="state-action">${escapeHtml(copy.action || "")}</span>
+      </div>
+    `;
+  }
+
+  function stateEntry(title, summary) {
+    return `
+      <div class="entry-row state-entry">
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(summary)}</p>
+        </div>
+      </div>
+    `;
+  }
+
   function detailHref(id) {
     return `details.html?id=${encodeURIComponent(id)}`;
   }
@@ -403,6 +552,21 @@
       return "API DATA / status unavailable";
     }
     const counts = status.sourceOutcomeCounts || {};
+    if (status.state === "loading") {
+      return "LOADING LIVE DATA / waiting for first refresh";
+    }
+    if (status.state === "empty_live") {
+      return `EMPTY LIVE DATA / ${counts.succeeded || 0} sources OK / ${counts.failed || 0} failed / no visible signals`;
+    }
+    if (status.state === "partial_live") {
+      return `PARTIAL LIVE DATA / ${counts.succeeded || 0} sources OK / ${counts.failed || 0} failed / ${counts.skipped || 0} skipped`;
+    }
+    if (status.state === "stale_live") {
+      return `STALE LIVE DATA / ${counts.succeeded || 0} sources OK / ${counts.failed || 0} failed / updated ${formatDateTime(status.lastUpdatedAt || status.lastLiveFetchAt)}`;
+    }
+    if (status.state === "api_unavailable") {
+      return "API UNAVAILABLE / static sample hidden";
+    }
     if (status.mode === "live") {
       const label = status.stale ? "STALE LIVE DATA" : "LIVE DATA";
       return `${label} / ${counts.succeeded || 0} sources OK / ${counts.failed || 0} failed / ${counts.skipped || 0} skipped / fetched ${counts.fetched || 0} / updated ${formatDateTime(status.lastLiveFetchAt)}`;
@@ -411,6 +575,13 @@
       return "DEMO DATA / deterministic local backend fixture";
     }
     return `${String(status.mode || "API").toUpperCase()} DATA / status pending`;
+  }
+
+  function asArray(value) {
+    if (value === undefined || value === null) {
+      return [];
+    }
+    return Array.isArray(value) ? value : [value];
   }
 
   function formatDateTime(value) {

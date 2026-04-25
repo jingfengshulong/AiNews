@@ -28,10 +28,10 @@
 
 ## 5. Serving API And Frontend States
 
-- [ ] 5.1 Extend homepage/detail API metadata for loading, empty, live, partial-live, stale-live, and demo states
-- [ ] 5.2 Update frontend hydration to render explicit loading, empty, partial, stale, and API-unavailable states
-- [ ] 5.3 Remove misleading static fixture copy from hydrated live failure paths while keeping demo preview support
-- [ ] 5.4 Verify home, detail, sources, dates, topics, and search pages with persisted live data
+- [x] 5.1 Extend homepage/detail API metadata for loading, empty, live, partial-live, stale-live, and demo states
+- [x] 5.2 Update frontend hydration to render explicit loading, empty, partial, stale, and API-unavailable states
+- [x] 5.3 Remove misleading static fixture copy from hydrated live failure paths while keeping demo preview support
+- [x] 5.4 Verify home, detail, sources, dates, topics, and search pages with persisted live data
 
 ## 6. Verification And Version Management
 

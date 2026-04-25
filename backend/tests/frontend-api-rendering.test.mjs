@@ -34,6 +34,7 @@ async function renderPage({ file, url, responses }) {
 const homeResponse = {
   dataStatus: {
     mode: 'live',
+    state: 'live',
     runId: 'live_test',
     lastLiveFetchAt: '2026-04-21T11:55:00.000Z',
     stale: false,
@@ -154,6 +155,7 @@ test('homepage renders stale and fixture data status from /api/home metadata', a
         ...homeResponse,
         dataStatus: {
           ...homeResponse.dataStatus,
+          state: 'stale_live',
           stale: true,
           sourceOutcomeCounts: { succeeded: 2, failed: 1, skipped: 1 }
         }
@@ -170,6 +172,7 @@ test('homepage renders stale and fixture data status from /api/home metadata', a
         ...homeResponse,
         dataStatus: {
           mode: 'demo',
+          state: 'demo',
           stale: false,
           sourceOutcomeCounts: { succeeded: 0, failed: 0, skipped: 0 }
         }
@@ -177,6 +180,45 @@ test('homepage renders stale and fixture data status from /api/home metadata', a
     }
   });
   assert.match(fixtureDom.window.document.querySelector('.footer-note').textContent, /DEMO DATA/);
+});
+
+test('homepage renders empty and API-unavailable states without sample headlines', async () => {
+  const emptyDom = await renderPage({
+    file: 'index.html',
+    url: 'http://localhost/index.html',
+    responses: {
+      '/api/home': {
+        ...homeResponse,
+        dataStatus: {
+          ...homeResponse.dataStatus,
+          state: 'empty_live',
+          stale: false,
+          empty: true,
+          sourceOutcomeCounts: { succeeded: 2, failed: 0, skipped: 0, fetched: 3, processed: 3 }
+        },
+        leadSignal: undefined,
+        rankedSignals: [],
+        stats: { visibleSignals: 0, articlesIndexed: 3, sourceCount: 2, hotSignals: 0 },
+        sourceSummaries: [],
+        dateSummaries: [],
+        tickerItems: []
+      }
+    }
+  });
+  const emptyDocument = emptyDom.window.document;
+  assert.match(emptyDocument.querySelector('.hero-title').textContent, /暂无可见热点/);
+  assert.doesNotMatch(emptyDocument.querySelector('.ranking-list').textContent, /开源模型许可证/);
+  assert.match(emptyDocument.querySelector('.footer-note').textContent, /EMPTY LIVE DATA/);
+
+  const unavailableDom = await renderPage({
+    file: 'index.html',
+    url: 'http://localhost/index.html',
+    responses: {}
+  });
+  const unavailableDocument = unavailableDom.window.document;
+  assert.match(unavailableDocument.querySelector('.hero-title').textContent, /实时数据暂不可用/);
+  assert.doesNotMatch(unavailableDocument.querySelector('.ranking-list').textContent, /端侧小模型/);
+  assert.match(unavailableDocument.querySelector('.footer-note').textContent, /API UNAVAILABLE/);
 });
 
 test('detail page renders signal detail from /api/signals/:id', async () => {
@@ -193,4 +235,80 @@ test('detail page renders signal detail from /api/signals/:id', async () => {
   assert.match(document.querySelector('[data-detail-list="timeline"]').textContent, /官方发布更新/);
   assert.match(document.querySelector('[data-detail-list="sourceMix"]').textContent, /OpenAI News RSS/);
   assert.match(document.querySelector('[data-detail-list="related"]').textContent, /Benchmarking Tool-Using/);
+});
+
+test('sources, dates, topics, and search pages render API data', async () => {
+  const signal = homeResponse.leadSignal;
+  const sourceDom = await renderPage({
+    file: 'sources.html',
+    url: 'http://localhost/sources.html',
+    responses: {
+      '/api/sources': {
+        families: [{ family: 'company_announcement', label: 'Company Announcement', signalCount: 1 }],
+        sources: [{ id: 'src_1', name: 'OpenAI News RSS' }, { id: 'src_2', name: 'NewsAPI AI Coverage' }]
+      },
+      '/api/sources/company_announcement': {
+        family: 'company_announcement',
+        label: 'Company Announcement',
+        signals: [signal]
+      }
+    }
+  });
+  assert.match(sourceDom.window.document.querySelector('.archive-grid').textContent, /OpenAI introduces Agent SDK/);
+  assert.doesNotMatch(sourceDom.window.document.querySelector('.archive-grid').textContent, /企业 AI 采购关键词/);
+
+  const datesDom = await renderPage({
+    file: 'dates.html',
+    url: 'http://localhost/dates.html',
+    responses: {
+      '/api/dates/today': { range: { label: 'today' }, signals: [signal] },
+      '/api/dates/yesterday': { range: { label: 'yesterday' }, signals: [] },
+      '/api/dates/week': { range: { label: 'week' }, signals: [signal, homeResponse.rankedSignals[0]] }
+    }
+  });
+  assert.match(datesDom.window.document.querySelector('.archive-grid').textContent, /OpenAI introduces Agent SDK/);
+  assert.doesNotMatch(datesDom.window.document.querySelector('.archive-grid').textContent, /AI Agent 企业落地/);
+
+  const topicsDom = await renderPage({
+    file: 'topics.html',
+    url: 'http://localhost/topics.html',
+    responses: {
+      '/api/topics': {
+        topics: [
+          { slug: 'ai-agent', name: 'AI Agent', signalCount: 1 },
+          { slug: 'empty-topic', name: 'Empty Topic', signalCount: 0 }
+        ]
+      },
+      '/api/topics/ai-agent': {
+        topic: { slug: 'ai-agent', name: 'AI Agent' },
+        signals: [signal]
+      }
+    }
+  });
+  assert.match(topicsDom.window.document.querySelector('.topic-list').textContent, /OpenAI introduces Agent SDK/);
+  assert.doesNotMatch(topicsDom.window.document.querySelector('.topic-list').textContent, /企业流程自动化/);
+
+  const searchDom = await renderPage({
+    file: 'search.html',
+    url: 'http://localhost/search.html',
+    responses: {
+      '/api/search': {
+        query: { q: 'AI Agent 企业采购' },
+        results: [
+          { type: 'signal', ...signal },
+          {
+            type: 'article',
+            id: 'art_1',
+            title: 'NewsAPI article confirms enterprise Agent procurement',
+            excerpt: 'API search result rendered from backend data.',
+            sourceFamilies: ['technology_media'],
+            primaryPublishedAt: '2026-04-21T09:00:00.000Z',
+            originalUrl: 'https://example.com/article'
+          }
+        ]
+      }
+    }
+  });
+  assert.match(searchDom.window.document.querySelector('.result-list').textContent, /NewsAPI article confirms/);
+  assert.doesNotMatch(searchDom.window.document.querySelector('.result-list').textContent, /流程自动化成为企业 AI 预算/);
 });

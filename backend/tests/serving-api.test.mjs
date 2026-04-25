@@ -361,10 +361,70 @@ test('GET /api/home exposes live and stale freshness metadata without secrets', 
     assert.equal(response.status, 200);
     assert.equal(body.leadSignal.id, leadSignal.id);
     assert.equal(body.dataStatus.mode, 'live');
+    assert.equal(body.dataStatus.state, 'stale_live');
     assert.equal(body.dataStatus.stale, true);
     assert.equal(body.dataStatus.sourceOutcomeCounts.succeeded, 3);
     assert.equal(body.dataStatus.skippedReasons.credential_missing, 2);
     assert.doesNotMatch(serialized, /NEWSAPI_KEY|PRODUCT_HUNT_TOKEN|secret/i);
+  });
+});
+
+test('GET /api/home derives explicit product data states', async () => {
+  const { runtime } = seedServingFixture();
+  const createService = (dataStatus, currentRuntime = runtime) => createNewsServingService({
+    signalRepository: currentRuntime.signalRepository,
+    articleRepository: currentRuntime.articleRepository,
+    sourceService: currentRuntime.sourceService,
+    topicRepository: currentRuntime.topicRepository,
+    scoreComponentRepository: currentRuntime.scoreComponentRepository,
+    dataStatus,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  await withServer(createService({
+    mode: 'live',
+    stale: false,
+    lastLiveFetchAt: '2026-04-21T11:50:00.000Z',
+    sourceOutcomeCounts: { succeeded: 3, failed: 0, skipped: 0 }
+  }), async (baseUrl) => {
+    const { body } = await getJson(baseUrl, '/api/home');
+    assert.equal(body.dataStatus.state, 'live');
+    assert.equal(body.dataStatus.empty, false);
+  });
+
+  await withServer(createService({
+    mode: 'live',
+    stale: false,
+    lastLiveFetchAt: '2026-04-21T11:50:00.000Z',
+    sourceOutcomeCounts: { succeeded: 2, failed: 1, skipped: 1 }
+  }), async (baseUrl) => {
+    const { body } = await getJson(baseUrl, '/api/home');
+    assert.equal(body.dataStatus.state, 'partial_live');
+    assert.equal(body.dataStatus.sourceOutcomeCounts.failed, 1);
+  });
+
+  const emptyRuntime = createRuntime();
+  await withServer(createService({
+    mode: 'live',
+    stale: false,
+    lastLiveFetchAt: '2026-04-21T11:50:00.000Z',
+    sourceOutcomeCounts: { succeeded: 2, failed: 0, skipped: 0 }
+  }, emptyRuntime), async (baseUrl) => {
+    const { body } = await getJson(baseUrl, '/api/home');
+    assert.equal(body.dataStatus.state, 'empty_live');
+    assert.equal(body.dataStatus.empty, true);
+    assert.equal(body.leadSignal, undefined);
+  });
+
+  await withServer(createService({
+    mode: 'live',
+    state: 'loading',
+    stale: false,
+    sourceOutcomeCounts: { succeeded: 0, failed: 0, skipped: 0 }
+  }, emptyRuntime), async (baseUrl) => {
+    const { body } = await getJson(baseUrl, '/api/home');
+    assert.equal(body.dataStatus.state, 'loading');
+    assert.equal(body.dataStatus.empty, true);
   });
 });
 
@@ -376,6 +436,7 @@ test('GET /api/signals/:id returns attributable detail and never exposes restric
     const serialized = JSON.stringify(body);
 
     assert.equal(response.status, 200);
+    assert.equal(body.dataStatus.state, 'demo');
     assert.equal(body.signal.id, leadSignal.id);
     assert.equal(body.keyPoints.length, 2);
     assert.equal(body.supportingSources[0].sourceId, official.id);

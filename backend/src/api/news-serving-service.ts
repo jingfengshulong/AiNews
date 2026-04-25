@@ -9,6 +9,18 @@ const familyLabels = {
   company_announcement: 'Company Announcement'
 };
 
+const productDataStates = new Set(['loading', 'empty_live', 'live', 'partial_live', 'stale_live', 'demo', 'api_unavailable', 'unknown']);
+const dataStateLabels = {
+  loading: 'Loading live data',
+  empty_live: 'Empty live data',
+  live: 'Live data',
+  partial_live: 'Partial live data',
+  stale_live: 'Stale live data',
+  demo: 'Demo data',
+  api_unavailable: 'API unavailable',
+  unknown: 'Unknown data state'
+};
+
 export function createNewsServingService({
   signalRepository,
   articleRepository,
@@ -28,7 +40,7 @@ export function createNewsServingService({
       const rankedSignals = visible.filter((signal) => signal.id !== leadSignal?.id).slice(0, Math.max(0, limit - 1)).map(signalSummary);
 
       return {
-        dataStatus: resolveDataStatus(),
+        dataStatus: resolveDataStatus({ visibleCount: visible.length }),
         dataWindow: {
           label: todaySignals.length > 0 ? 'today' : 'latest',
           date: today,
@@ -60,6 +72,7 @@ export function createNewsServingService({
       const topics = topicsForSignal(signal.id);
 
       return {
+        dataStatus: resolveDataStatus({ visibleCount: rankedVisibleSignals().length }),
         signal: signalSummary(signal),
         keyPoints: asArray(signal.keyPoints).map((point) => ({
           text: point.text,
@@ -243,9 +256,9 @@ export function createNewsServingService({
       .sort(compareSignalsForProduct);
   }
 
-  function resolveDataStatus() {
+  function resolveDataStatus({ visibleCount = 0 } = {}) {
     const value = typeof dataStatus === 'function' ? dataStatus() : dataStatus;
-    return value || {
+    const rawStatus = value || {
       mode: 'unknown',
       stale: true,
       sourceOutcomeCounts: {
@@ -256,6 +269,24 @@ export function createNewsServingService({
         fetched: 0,
         processed: 0
       }
+    };
+    const counts = {
+      ready: 0,
+      skipped: 0,
+      succeeded: 0,
+      failed: 0,
+      fetched: 0,
+      processed: 0,
+      ...(rawStatus.sourceOutcomeCounts || {})
+    };
+    const state = deriveProductDataState(rawStatus, counts, visibleCount);
+    return {
+      ...rawStatus,
+      state,
+      label: dataStateLabels[state] || state,
+      empty: visibleCount === 0,
+      lastUpdatedAt: rawStatus.lastUpdatedAt || rawStatus.lastLiveFetchAt || rawStatus.completedAt,
+      sourceOutcomeCounts: counts
     };
   }
 
@@ -431,6 +462,37 @@ export function createNewsServingService({
 
 function isVisibleSignal(signal) {
   return Boolean(signal?.id) && !hiddenStatuses.has(signal.status);
+}
+
+function deriveProductDataState(status, counts, visibleCount) {
+  if (productDataStates.has(status.state)) {
+    return status.state;
+  }
+  if (status.mode === 'demo' || status.mode === 'fixture') {
+    return 'demo';
+  }
+  if (status.mode === 'live') {
+    if (status.stale) {
+      return 'stale_live';
+    }
+    if (visibleCount === 0 && (status.lastLiveFetchAt || status.completedAt || counts.succeeded > 0 || counts.failed > 0 || counts.skipped > 0)) {
+      return 'empty_live';
+    }
+    if (visibleCount === 0) {
+      return 'loading';
+    }
+    if (counts.succeeded > 0 && (counts.failed > 0 || counts.skipped > 0)) {
+      return 'partial_live';
+    }
+    if (counts.succeeded > 0 || status.lastLiveFetchAt || status.completedAt) {
+      return 'live';
+    }
+    return 'loading';
+  }
+  if (status.mode === 'api_unavailable') {
+    return 'api_unavailable';
+  }
+  return 'unknown';
 }
 
 function sourcePublic(source) {
