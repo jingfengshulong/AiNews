@@ -94,17 +94,23 @@ export class SignalScoringService {
 
   contextForSignal(signal) {
     const links = this.signalRepository.listSignalArticles(signal.id);
-    const articles = links.map((link) => this.articleRepository.getArticle(link.articleId)).filter(Boolean);
+    const allArticles = links.map((link) => this.articleRepository.getArticle(link.articleId)).filter(Boolean);
+    const articles = allArticles.filter(isScoringEligibleArticle);
     const sources = articles.map((article) => this.getSource(article.sourceId)).filter(Boolean);
     const relations = this.sourceRelationRepository.listRelations();
     const articleIds = new Set(articles.map((article) => article.id));
-    const signalRelations = relations.filter((relation) => relation.signalId === signal.id || articleIds.has(relation.articleId));
+    const signalRelations = relations.filter((relation) => {
+      if (relation.articleId && !articleIds.has(relation.articleId)) {
+        return false;
+      }
+      return relation.signalId === signal.id || articleIds.has(relation.articleId);
+    });
     const signalSupportRelations = signalRelations.filter((relation) => relation.relationType === 'signal_support');
     const duplicateRelations = signalRelations.filter((relation) => relation.relationType === 'duplicate_confirmed' && relation.evidence?.scoreImpact?.duplicateSupport === true);
     const topicAssignments = this.topicRepository.listSignalTopics(signal.id);
 
     return {
-      freshness: freshnessValue(signal.primaryPublishedAt || newestPublishedAt(articles), this.now()),
+      freshness: freshnessValue(newestPublishedAt(articles), this.now()),
       sourceCount: sourceCountValue(sources),
       sourceDiversity: sourceDiversityValue(sources),
       duplicateSupport: duplicateSupportValue(duplicateRelations),
@@ -195,12 +201,18 @@ function sourceTrustValue(sources) {
 }
 
 function evidenceStrengthValue(signalSupportRelations, articles, duplicateRelations) {
+  if (articles.length === 0) {
+    return 0;
+  }
   const clusterScore = signalSupportRelations.length > 0
     ? average(signalSupportRelations.map((relation) => relation.evidence?.clusterScore || 0.5))
     : 0.45;
-  const sourceEvidence = Math.min(articles.length / 4, 1);
+  const uniqueSourceCount = unique(articles.map((article) => article.sourceId).filter(Boolean)).length;
+  const sourceEvidence = Math.min(uniqueSourceCount / 4, 1);
   const duplicateEvidence = duplicateRelations.length > 0 ? 0.2 : 0;
-  return Math.min((clusterScore * 0.55) + (sourceEvidence * 0.35) + duplicateEvidence, 1);
+  const value = Math.min((clusterScore * 0.55) + (sourceEvidence * 0.35) + duplicateEvidence, 1);
+  const singleSourceCap = uniqueSourceCount <= 1 && duplicateRelations.length === 0 ? 0.58 : 1;
+  return Math.min(value, singleSourceCap);
 }
 
 function contentQualityValue(articles) {
@@ -259,6 +271,10 @@ function newestPublishedAt(articles) {
     .filter(Boolean)
     .sort()
     .at(-1);
+}
+
+function isScoringEligibleArticle(article) {
+  return article.visibilityStatus !== 'hidden_latest' && article.qualityStatus !== 'low_quality';
 }
 
 function scoreSum(components) {

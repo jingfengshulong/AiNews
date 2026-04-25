@@ -23,6 +23,7 @@ import { InMemoryQueue } from '../queue/in-memory-queue.ts';
 import { ArticleDedupeService } from '../signal-processing/article-dedupe-service.ts';
 import { createEnrichmentJobHandler, enqueuePendingEnrichmentJobs, processEnrichmentJobs } from '../signal-processing/enrichment-job-handler.ts';
 import { ScoreComponentRepository } from '../signal-processing/score-component-repository.ts';
+import { ArticleQualityService } from '../signal-processing/article-quality-service.ts';
 import { SignalClusterService } from '../signal-processing/signal-cluster-service.ts';
 import { SignalRepository } from '../signal-processing/signal-repository.ts';
 import { SignalScoringService } from '../signal-processing/signal-scoring-service.ts';
@@ -252,6 +253,11 @@ async function runLiveOnce({
   });
   applyProcessOutcomes({ processSummary, outcomesBySourceId });
 
+  const qualitySummary = new ArticleQualityService({
+    articleRepository,
+    sourceService,
+    now
+  }).classifyArticles();
   const dedupeSummary = new ArticleDedupeService({
     articleRepository,
     sourceRelationRepository,
@@ -323,6 +329,7 @@ async function runLiveOnce({
     pipeline: {
       fetch: fetchSummary,
       process: processSummary,
+      quality: qualitySummary,
       dedupe: dedupeSummary,
       cluster: clusterSummary,
       topics: topicSummary,

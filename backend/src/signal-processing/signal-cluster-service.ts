@@ -11,7 +11,8 @@ export class SignalClusterService {
   }
 
   clusterArticles() {
-    const articles = this.articleRepository.listArticles().sort(articleSort);
+    const allArticles = this.articleRepository.listArticles();
+    const articles = allArticles.filter(isVisibleLatestArticle).sort(articleSort);
     const relations = this.sourceRelationRepository.listRelations();
     const duplicateMap = createDuplicateMap(relations);
     const assigned = new Set();
@@ -76,11 +77,12 @@ export class SignalClusterService {
     }
 
     return {
-      checkedArticles: articles.length,
+      checkedArticles: allArticles.length,
+      eligibleArticles: articles.length,
       createdSignals,
       updatedSignals,
       linkedArticles,
-      unclusteredArticles: 0
+      unclusteredArticles: allArticles.length - articles.length
     };
   }
 
@@ -91,6 +93,10 @@ export class SignalClusterService {
       return undefined;
     }
   }
+}
+
+function isVisibleLatestArticle(article) {
+  return article.visibilityStatus !== 'hidden_latest' && article.qualityStatus !== 'low_quality';
 }
 
 function clusterEvidence(cluster, candidate, duplicateMap) {

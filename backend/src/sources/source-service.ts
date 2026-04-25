@@ -21,6 +21,7 @@ export class SourceService {
       fetchLimit: input.fetchLimit,
       language: input.language,
       fetchIntervalMinutes: input.fetchIntervalMinutes,
+      freshnessWindowHours: input.freshnessWindowHours,
       trustScore: input.trustScore,
       credentialRef: input.credentialRef,
       usagePolicy: { ...input.usagePolicy },
@@ -135,6 +136,9 @@ export function validateSourceInput(input) {
   }
   if (!Number.isInteger(input.fetchIntervalMinutes) || input.fetchIntervalMinutes < 5) {
     throw new Error('Source fetch interval must be an integer of at least 5 minutes');
+  }
+  if (input.freshnessWindowHours !== undefined && (!Number.isFinite(input.freshnessWindowHours) || input.freshnessWindowHours <= 0)) {
+    throw new Error('Source freshness window must be a positive number of hours');
   }
   if (typeof input.trustScore !== 'number' || input.trustScore < 0 || input.trustScore > 1) {
     throw new Error('Source trust score must be between 0 and 1');

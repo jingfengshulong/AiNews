@@ -59,7 +59,11 @@ function createArticle(repository, patch) {
     textForAI: patch.textForAI,
     fullTextDisplayAllowed: false,
     contentHash: patch.contentHash,
-    extractionMeta: patch.extractionMeta || {}
+    extractionMeta: patch.extractionMeta || {},
+    qualityStatus: patch.qualityStatus,
+    visibilityStatus: patch.visibilityStatus,
+    qualityReasons: patch.qualityReasons,
+    qualityCheckedAt: patch.qualityCheckedAt
   });
 }
 
@@ -319,4 +323,58 @@ test('signal scoring treats possible duplicate evidence conservatively', () => {
 
   assert.equal(components.find((component) => component.component === 'heat_duplicate_support').value, 0);
   assert.equal(components.find((component) => component.component === 'signal_duplicate_confidence').value, 0);
+});
+
+test('signal scoring ranks weak single-source and low-quality evidence conservatively', () => {
+  const runtime = createRuntime();
+  const media = createSource(runtime.sourceService, {
+    name: 'Single Source Media',
+    family: 'technology_media',
+    trustScore: 0.72
+  });
+  const approvedArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_single_quality',
+    sourceId: media.id,
+    title: 'Fresh AI browser assistant rollout reaches developer beta',
+    excerpt: 'A single publication reports a fresh AI browser assistant beta.',
+    publishedAt: '2026-04-21T11:00:00.000Z',
+    textForAI: 'A single publication reports that a fresh AI browser assistant beta is rolling out to developers with workflow automation and search features.',
+    contentHash: '2'.repeat(64),
+    qualityStatus: 'approved',
+    visibilityStatus: 'visible_latest'
+  });
+  const lowQualityArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_single_low_quality',
+    sourceId: media.id,
+    title: 'Fresh AI browser assistant rumor gets copied without evidence',
+    excerpt: 'A single weak article repeats the same rumor without useful evidence.',
+    publishedAt: '2026-04-21T11:10:00.000Z',
+    textForAI: 'A single weak article repeats the same rumor without useful evidence, attribution, or verifiable details, even though it has enough text to look substantial.',
+    contentHash: '3'.repeat(64),
+    qualityStatus: 'low_quality',
+    visibilityStatus: 'hidden_latest',
+    qualityReasons: ['policy_review_required']
+  });
+
+  const approvedSignal = createSignal(runtime, {
+    title: approvedArticle.title,
+    publishedAt: approvedArticle.publishedAt,
+    articles: [approvedArticle],
+    topics: [{ slug: 'ai-agent', confidence: 0.76 }]
+  });
+  const lowQualitySignal = createSignal(runtime, {
+    title: lowQualityArticle.title,
+    publishedAt: lowQualityArticle.publishedAt,
+    articles: [lowQualityArticle],
+    topics: [{ slug: 'ai-agent', confidence: 0.76 }]
+  });
+
+  createScoringService(runtime).scoreSignals();
+  const approvedComponents = runtime.scoreComponentRepository.listScoreComponents(approvedSignal.id);
+  const lowQualityComponents = runtime.scoreComponentRepository.listScoreComponents(lowQualitySignal.id);
+
+  assert.ok(approvedComponents.find((component) => component.component === 'signal_evidence_strength').value <= 0.58);
+  assert.equal(lowQualityComponents.find((component) => component.component === 'signal_evidence_strength').value, 0);
+  assert.equal(lowQualityComponents.find((component) => component.component === 'signal_content_quality').value, 0);
+  assert.equal(lowQualityComponents.find((component) => component.component === 'heat_source_count').value, 0);
 });

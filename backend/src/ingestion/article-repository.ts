@@ -29,6 +29,10 @@ export class ArticleRepository {
       fullTextDisplayAllowed: input.fullTextDisplayAllowed === true,
       contentHash: input.contentHash,
       extractionMeta: cloneRecord(input.extractionMeta || {}),
+      qualityStatus: input.qualityStatus || 'unclassified',
+      visibilityStatus: input.visibilityStatus || 'unclassified',
+      qualityReasons: cloneRecord(input.qualityReasons || []),
+      qualityCheckedAt: input.qualityCheckedAt,
       dedupeStatus: 'candidate',
       createdAt: now,
       updatedAt: now
@@ -56,6 +60,25 @@ export class ArticleRepository {
     const updated = {
       ...existing,
       dedupeStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.store.articles.set(id, updated);
+    return cloneRecord(updated);
+  }
+
+  updateQualityStatus(id, { qualityStatus, visibilityStatus, qualityReasons = [], qualityCheckedAt = new Date().toISOString() }) {
+    const existing = this.store.articles.get(id);
+    if (!existing) {
+      throw new Error(`Article not found: ${id}`);
+    }
+
+    const updated = {
+      ...existing,
+      qualityStatus,
+      visibilityStatus,
+      qualityReasons: cloneRecord(qualityReasons),
+      qualityCheckedAt,
       updatedAt: new Date().toISOString()
     };
 

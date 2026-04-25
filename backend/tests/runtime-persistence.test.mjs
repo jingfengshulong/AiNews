@@ -261,6 +261,48 @@ test('live runtime persists source health and exposes loading and partial live r
   assert.equal(failedSource.nextFetchAt, '2026-04-21T13:00:00.000Z');
 });
 
+test('live runtime preserves stale research records but excludes them from latest visible signals', async () => {
+  const snapshotPath = join(await mkdtemp(join(tmpdir(), 'ai-news-quality-')), 'runtime.json');
+  const seedSources = createSeedSources([{
+    name: 'Crossref AI Works',
+    sourceType: 'crossref',
+    family: 'research',
+    apiEndpoint: 'https://api.crossref.org/works?query=artificial%20intelligence',
+    trustScore: 0.76
+  }]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    snapshotPath,
+    seedSources,
+    adapters: {
+      crossref: {
+        fetchSource: async (sourceRecord) => [adapterRecord(sourceRecord, {
+          externalId: '10.1093/wentk/9780190602383.003.0001',
+          title: 'Defining Artificial Intelligence',
+          url: 'https://doi.org/10.1093/wentk/9780190602383.003.0001',
+          publishedAt: '2016-11-24T00:00:00.000Z',
+          summary: 'A catalog-style Crossref work that is useful background but not current news.'
+        })]
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-25T12:00:00.000Z')
+  });
+
+  const report = await runtime.runOnce({ maxItemsPerSource: 1 });
+  const article = runtime.articleRepository.listArticles()[0];
+  const home = runtime.servingService.getHome();
+
+  assert.equal(report.totals.rawItems, 1);
+  assert.equal(report.totals.articles, 1);
+  assert.equal(report.totals.signals, 0);
+  assert.equal(article.visibilityStatus, 'hidden_latest');
+  assert.ok(article.qualityReasons.includes('stale_for_latest'));
+  assert.equal(home.stats.visibleSignals, 0);
+  assert.equal(home.leadSignal, undefined);
+});
+
 function createSeedSources(records) {
   return (sourceService) => records.map((record) => sourceService.createSource({
     name: record.name,
@@ -279,20 +321,20 @@ function createSeedSources(records) {
   }));
 }
 
-function adapterRecord(sourceRecord) {
+function adapterRecord(sourceRecord, patch = {}) {
   return {
     sourceId: sourceRecord.id,
     sourceType: sourceRecord.sourceType,
-    externalId: 'openai-live-1',
-    title: 'OpenAI launches a persistent agent platform',
-    url: 'https://example.com/openai-live-1',
-    publishedAt: '2026-04-21T08:00:00.000Z',
-    author: sourceRecord.name,
-    summary: 'A persistent runtime lets local AI news survive restarts.',
-    categories: ['AI Agent'],
+    externalId: patch.externalId || 'openai-live-1',
+    title: patch.title || 'OpenAI launches a persistent agent platform',
+    url: patch.url || 'https://example.com/openai-live-1',
+    publishedAt: patch.publishedAt || '2026-04-21T08:00:00.000Z',
+    author: patch.author || sourceRecord.name,
+    summary: patch.summary || 'A persistent runtime lets local AI news survive restarts.',
+    categories: patch.categories || ['AI Agent'],
     rawPayload: {
-      title: 'OpenAI launches a persistent agent platform',
-      summary: 'A persistent runtime lets local AI news survive restarts.'
+      title: patch.title || 'OpenAI launches a persistent agent platform',
+      summary: patch.summary || 'A persistent runtime lets local AI news survive restarts.'
     },
     responseMeta: {
       adapter: sourceRecord.sourceType,

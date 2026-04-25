@@ -15,10 +15,10 @@
 
 ## 3. Data Quality And Freshness
 
-- [ ] 3.1 Add tests for source-family freshness windows, including stale Crossref/research records excluded from latest news
-- [ ] 3.2 Add article quality classification for missing title, URL, publication time, excerpt/text, language, and policy constraints
-- [ ] 3.3 Prevent stale or low-quality candidates from contributing to visible latest-news signals while preserving raw/article records
-- [ ] 3.4 Adjust scoring inputs so fresh multi-source evidence is rewarded and weak single-source evidence is ranked conservatively
+- [x] 3.1 Add tests for source-family freshness windows, including stale Crossref/research records excluded from latest news
+- [x] 3.2 Add article quality classification for missing title, URL, publication time, excerpt/text, language, and policy constraints
+- [x] 3.3 Prevent stale or low-quality candidates from contributing to visible latest-news signals while preserving raw/article records
+- [x] 3.4 Adjust scoring inputs so fresh multi-source evidence is rewarded and weak single-source evidence is ranked conservatively
 
 ## 4. AI Enrichment Quality
 

@@ -101,6 +101,31 @@ test('validates source type, cadence, language, trust score, credential referenc
   );
 });
 
+test('persists optional source freshness windows for latest-news eligibility', () => {
+  const service = new SourceService(new SourceRepository(new InMemoryStore()));
+  const source = service.createSource({
+    name: 'Fast Moving Community Feed',
+    sourceType: 'hacker_news',
+    family: 'community',
+    apiEndpoint: 'https://hacker-news.firebaseio.com/v0/newstories.json',
+    language: 'en',
+    fetchIntervalMinutes: 30,
+    trustScore: 0.64,
+    freshnessWindowHours: 12,
+    usagePolicy
+  });
+
+  assert.equal(source.freshnessWindowHours, 12);
+
+  const updated = service.updateSource(source.id, { freshnessWindowHours: 24 });
+  assert.equal(updated.freshnessWindowHours, 24);
+
+  assert.throws(
+    () => service.updateSource(source.id, { freshnessWindowHours: 0 }),
+    /freshness window/i
+  );
+});
+
 test('seeds RSS/Atom sources and placeholder API-backed sources', () => {
   const service = new SourceService(new SourceRepository(new InMemoryStore()));
   const seeded = seedMvpSources(service);
