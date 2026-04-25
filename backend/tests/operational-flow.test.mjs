@@ -85,4 +85,8 @@ test('package scripts expose local demo startup and smoke verification commands'
   assert.match(startLiveScript, /LIVE_MAX_ITEMS_PER_SOURCE/);
   assert.match(startLiveScript, /LIVE_REQUEST_TIMEOUT_MS/);
   assert.match(startLiveScript, /LIVE_DISABLE_AI_ENRICHMENT/);
+  assert.ok(
+    startLiveScript.indexOf('listen(port') < startLiveScript.indexOf('refreshLiveData'),
+    'live startup should listen before refreshing sources'
+  );
 });

@@ -9,7 +9,7 @@ The missing piece is an operator-safe live runtime that can fetch configured rea
 **Goals:**
 
 - Provide a one-shot live ingestion path for local verification and manual refreshes.
-- Provide a live API startup path that runs an initial live ingestion pass before serving the frontend.
+- Provide a live API startup path that starts serving promptly and kicks off an initial live ingestion pass in the background.
 - Reuse existing adapters, source registry, queues, processors, scoring, enrichment, and serving APIs.
 - Report per-source readiness, fetched item counts, processed item counts, signal counts, failures, and data freshness.
 - Keep third-party API keys server-side and skip credential-gated sources when required keys are absent.
@@ -35,6 +35,8 @@ The missing piece is an operator-safe live runtime that can fetch configured rea
 3. Keep live fetching bounded.
 
    The runtime will use existing source fetch intervals, adapter limits, request timeouts, and per-source failure handling. It will process a bounded number of items per source in a run so local verification remains fast and accidental API overuse is less likely. The alternative was continuous polling inside the first implementation, but one-shot refreshes are easier to test and safer to operate.
+
+   The live API startup script starts the HTTP server before waiting on external source fetches. It then performs the initial bounded refresh in the background and logs either `live_refresh_completed` or `live_refresh_failed`. This keeps the local frontend reachable even when a source is slow, rate limited, or temporarily unavailable.
 
 4. Add run and freshness metadata at the serving boundary.
 

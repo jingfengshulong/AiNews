@@ -6,6 +6,7 @@ The current product can display backend-generated demo data, but it still cannot
 
 - Add a live runtime path that seeds enabled sources, fetches real RSS/API data, processes raw items, clusters signals, scores them, enriches them, and serves the resulting API data.
 - Add one-shot live ingestion and live API startup scripts separate from the deterministic demo scripts.
+- Start the live API promptly and refresh live data in the background so the local frontend is reachable while external sources respond.
 - Add source readiness checks so authenticated sources are skipped or reported clearly when required credentials are missing.
 - Add freshness and run metadata so API responses and logs distinguish live data from demo fixture data.
 - Keep demo fixtures as the deterministic fallback for tests and local visual verification.
@@ -27,7 +28,7 @@ None.
 ## Impact
 
 - Adds live runtime orchestration around existing adapters, queues, processors, scoring, enrichment, and serving APIs.
-- Adds local scripts for `live:once` and `live` API startup.
+- Adds local scripts for `live:once` and `live` API startup, with startup refresh running after the server begins listening.
 - Adds tests that mock live source HTTP responses without hitting external services.
 - Touches API response metadata and frontend display status.
 - Uses existing `.env` keys for NewsAPI, Product Hunt, Semantic Scholar, Crossref contact, and AI enrichment; no new browser-exposed secrets.

@@ -18,7 +18,7 @@
 ## 4. Operator Scripts
 
 - [x] 4.1 Add a live one-shot ingestion script and package command
-- [x] 4.2 Add a live API startup script and package command that runs an initial refresh before serving
+- [x] 4.2 Add a live API startup script and package command that starts serving promptly and refreshes live data in the background
 - [x] 4.3 Add a live smoke command that verifies the API returns live metadata and visible signals
 
 ## 5. Verification

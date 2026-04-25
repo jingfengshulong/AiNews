@@ -12,11 +12,11 @@ The system SHALL provide a live one-shot ingestion runtime that fetches eligible
 - **THEN** the system SHALL record that source failure in the run report and SHALL continue processing other eligible sources
 
 ### Requirement: Live API startup refresh
-The system SHALL provide a live API startup path that can run an initial live ingestion pass before serving API responses.
+The system SHALL provide a live API startup path that starts serving promptly and runs an initial live ingestion pass in the background.
 
 #### Scenario: Live API server starts
 - **WHEN** the live API startup script is executed
-- **THEN** the system SHALL run a bounded live ingestion pass, process downstream signal jobs, and start the API server with the resulting live data
+- **THEN** the system SHALL start the API server before waiting on external source fetches and SHALL refresh live data in the background
 
 #### Scenario: Live startup has no eligible source data
 - **WHEN** the initial live ingestion pass produces no visible signals

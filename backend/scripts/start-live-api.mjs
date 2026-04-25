@@ -13,10 +13,6 @@ const runtime = await createLiveRuntime({
   requestTimeoutMs: liveRequestTimeoutMs()
 });
 const sourceIds = sourceIdsFromEnv(runtime);
-const report = await runtime.runOnce({
-  maxItemsPerSource: liveMaxItemsPerSource(),
-  sourceIds
-});
 const port = Number(process.env.PORT || 4100);
 
 createApiServer({
@@ -29,12 +25,30 @@ createApiServer({
     port,
     url: `http://localhost:${port}/`,
     runtimeMode: config.runtimeMode,
-    runId: report.runId,
-    sourceOutcomeCounts: report.sourceOutcomeCounts,
-    totals: report.totals,
     selectedSourceCount: sourceIds?.length
   });
+  void refreshLiveData();
 });
+
+async function refreshLiveData() {
+  try {
+    const report = await runtime.runOnce({
+      maxItemsPerSource: liveMaxItemsPerSource(),
+      sourceIds
+    });
+    logger.info('live_refresh_completed', {
+      runId: report.runId,
+      sourceOutcomeCounts: report.sourceOutcomeCounts,
+      totals: report.totals,
+      selectedSourceCount: sourceIds?.length
+    });
+  } catch (error) {
+    logger.error('live_refresh_failed', {
+      message: error.message,
+      selectedSourceCount: sourceIds?.length
+    });
+  }
+}
 
 function applyLiveEnvOptions(config) {
   if (process.env.LIVE_DISABLE_AI_ENRICHMENT === '1') {
