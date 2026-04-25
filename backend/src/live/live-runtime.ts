@@ -70,6 +70,7 @@ export async function createLiveRuntime({
   activateConfiguredLiveSources({ sourceService, config });
   const sources = sourceService.listSources();
   let lastRunReport = restored.metadata.latestRunReport || createInitialReport({ now, sources });
+  let runSequence = restored.metadata.runSequence || 0;
 
   const servingService = createNewsServingService({
     signalRepository,
@@ -96,6 +97,7 @@ export async function createLiveRuntime({
       return clone(lastRunReport);
     },
     async runOnce(options = {}) {
+      runSequence += 1;
       const report = await runLiveOnce({
         config,
         queue,
@@ -113,10 +115,11 @@ export async function createLiveRuntime({
         enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl }),
         maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource,
         sourceIds: options.sourceIds,
+        runSequence,
         now
       });
       lastRunReport = report;
-      await persistSnapshot({ snapshotPath, store, lastRunReport });
+      await persistSnapshot({ snapshotPath, store, lastRunReport, runSequence });
       return clone(report);
     }
   };
@@ -133,13 +136,14 @@ async function restoreSnapshot(snapshotPath) {
   return restoreRuntimeStore(snapshot);
 }
 
-async function persistSnapshot({ snapshotPath, store, lastRunReport }) {
+async function persistSnapshot({ snapshotPath, store, lastRunReport, runSequence }) {
   if (!snapshotPath) {
     return;
   }
   await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
     metadata: {
-      latestRunReport: lastRunReport
+      latestRunReport: lastRunReport,
+      runSequence
     }
   }));
 }
@@ -155,18 +159,21 @@ export function reportToDataStatus(report, { now = () => new Date(), staleAfterM
   if (!report) {
     return {
       mode: 'unknown',
+      state: 'unknown',
       stale: true,
       sourceOutcomeCounts: emptyOutcomeCounts()
     };
   }
 
+  const stale = report.mode === 'live' ? isStale(report.lastLiveFetchAt, now(), staleAfterMs) : false;
   return {
     mode: report.mode,
+    state: runStateForReport({ report, stale }),
     runId: report.runId,
     startedAt: report.startedAt,
     completedAt: report.completedAt,
     lastLiveFetchAt: report.lastLiveFetchAt,
-    stale: report.mode === 'live' ? isStale(report.lastLiveFetchAt, now(), staleAfterMs) : false,
+    stale,
     sourceOutcomeCounts: clone(report.sourceOutcomeCounts || emptyOutcomeCounts()),
     skippedReasons: clone(report.skippedReasons || {})
   };
@@ -187,11 +194,12 @@ async function runLiveOnce({
   enrichmentProvider,
   maxItemsPerSource,
   sourceIds,
+  runSequence,
   now
 }) {
   const startedAtDate = now();
   const startedAt = startedAtDate.toISOString();
-  const runId = createRunId(startedAtDate);
+  const runId = createRunId(startedAtDate, runSequence);
   const readiness = evaluateLiveSourceReadiness({
     sources: sourceService.listSources(),
     config,
@@ -296,6 +304,7 @@ async function runLiveOnce({
 
   return {
     mode: 'live',
+    state: runStateForReport({ completedAt, sourceOutcomeCounts }),
     runId,
     startedAt,
     completedAt,
@@ -543,6 +552,7 @@ function createInitialReport({ now, sources }) {
   const at = now().toISOString();
   return {
     mode: 'live',
+    state: 'loading',
     runId: undefined,
     startedAt: undefined,
     completedAt: undefined,
@@ -591,8 +601,32 @@ function secretForRef(ref, config) {
   return byRef[ref] || config.secrets?.[ref] || process.env[ref];
 }
 
-function createRunId(date) {
-  return `live_${date.toISOString().replace(/[-:.]/g, '').replace('T', '_').replace('Z', '')}`;
+function runStateForReport({ report, completedAt, sourceOutcomeCounts, stale = false }) {
+  const counts = sourceOutcomeCounts || report?.sourceOutcomeCounts || emptyOutcomeCounts();
+  if (!report && !completedAt) {
+    return 'unknown';
+  }
+  if (report?.mode && report.mode !== 'live') {
+    return report.mode;
+  }
+  if (!completedAt && !report?.completedAt) {
+    return 'loading';
+  }
+  if (counts.succeeded > 0 && (counts.failed > 0 || counts.skipped > 0)) {
+    return 'partial_live';
+  }
+  if (counts.succeeded > 0) {
+    return stale ? 'stale_live' : 'live';
+  }
+  if (counts.failed > 0) {
+    return 'failed';
+  }
+  return 'empty';
+}
+
+function createRunId(date, sequence = 0) {
+  const base = `live_${date.toISOString().replace(/[-:.]/g, '').replace('T', '_').replace('Z', '')}`;
+  return sequence > 1 ? `${base}_${sequence}` : base;
 }
 
 function withRequestTimeout(fetchImpl, timeoutMs) {

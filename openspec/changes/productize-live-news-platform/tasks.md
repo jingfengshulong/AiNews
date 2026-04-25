@@ -8,10 +8,10 @@
 
 ## 2. Incremental Refresh And Source Health
 
-- [ ] 2.1 Add tests for repeated live runs avoiding duplicate raw items and article candidates
-- [ ] 2.2 Persist source health fields and next eligible fetch metadata across restarts
-- [ ] 2.3 Make live refresh reuse persisted source/raw/article indexes before fetching and processing
-- [ ] 2.4 Add operator run metadata for pending, partial, empty, successful, and failed live refresh states
+- [x] 2.1 Add tests for repeated live runs avoiding duplicate raw items and article candidates
+- [x] 2.2 Persist source health fields and next eligible fetch metadata across restarts
+- [x] 2.3 Make live refresh reuse persisted source/raw/article indexes before fetching and processing
+- [x] 2.4 Add operator run metadata for pending, partial, empty, successful, and failed live refresh states
 
 ## 3. Data Quality And Freshness
 

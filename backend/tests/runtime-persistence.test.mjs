@@ -12,6 +12,7 @@ import {
   saveRuntimeSnapshot,
   serializeRuntimeStore
 } from '../src/db/runtime-snapshot.ts';
+import { SourceFetchError } from '../src/ingestion/source-fetch-error.ts';
 import { createJobRecord } from '../src/queue/job.ts';
 import { createLiveRuntime } from '../src/live/live-runtime.ts';
 
@@ -147,6 +148,117 @@ test('live runtime restores persisted live data and latest run metadata on resta
   assert.equal(home.dataStatus.runId, report.runId);
   assert.equal(home.stats.visibleSignals, 1);
   assert.equal(restarted.store.nextId('raw'), 'raw_0002');
+});
+
+test('live runtime reuses persisted indexes on repeated refreshes without duplicating raw items or articles', async () => {
+  const snapshotPath = join(await mkdtemp(join(tmpdir(), 'ai-news-repeat-')), 'runtime.json');
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    trustScore: 0.95
+  }]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    snapshotPath,
+    seedSources,
+    adapters: {
+      rss: { fetchSource: async (sourceRecord) => [adapterRecord(sourceRecord)] }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const first = await runtime.runOnce({ maxItemsPerSource: 1 });
+  const second = await runtime.runOnce({ maxItemsPerSource: 1 });
+  const restarted = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    snapshotPath,
+    seedSources,
+    adapters: {
+      rss: { fetchSource: async (sourceRecord) => [adapterRecord(sourceRecord)] }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:10:00.000Z')
+  });
+  const third = await restarted.runOnce({ maxItemsPerSource: 1 });
+
+  assert.equal(first.sourceOutcomeCounts.fetched, 1);
+  assert.equal(second.sources[0].duplicates, 1);
+  assert.equal(third.sources[0].duplicates, 1);
+  assert.equal(restarted.rawItemRepository.listRawItems().length, 1);
+  assert.equal(restarted.articleRepository.listArticles().length, 1);
+  assert.equal(restarted.rawItemRepository.listRawItems()[0].duplicateFetchCount, 2);
+});
+
+test('live runtime persists source health and exposes loading and partial live run states', async () => {
+  const snapshotPath = join(await mkdtemp(join(tmpdir(), 'ai-news-health-')), 'runtime.json');
+  const seedSources = createSeedSources([
+    {
+      name: 'OpenAI Live RSS',
+      sourceType: 'rss',
+      family: 'company_announcement',
+      feedUrl: 'https://example.com/openai.xml',
+      trustScore: 0.95
+    },
+    {
+      name: 'Rate Limited RSS',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://example.com/rate-limited.xml',
+      trustScore: 0.6
+    }
+  ]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    snapshotPath,
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => {
+          if (sourceRecord.name.includes('Rate Limited')) {
+            throw new SourceFetchError('source is rate limited', {
+              category: 'rate_limited',
+              retryable: false,
+              retryAfter: '2026-04-21T13:00:00.000Z'
+            });
+          }
+          return [adapterRecord(sourceRecord)];
+        }
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  assert.equal(runtime.servingService.getHome().dataStatus.state, 'loading');
+  const report = await runtime.runOnce({ maxItemsPerSource: 1 });
+  assert.equal(report.sourceOutcomeCounts.succeeded, 1);
+  assert.equal(report.sourceOutcomeCounts.failed, 1);
+  assert.equal(runtime.servingService.getHome().dataStatus.state, 'partial_live');
+
+  const restarted = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    snapshotPath,
+    seedSources,
+    adapters: {
+      rss: { fetchSource: async () => [] }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:10:00.000Z')
+  });
+  const failedSource = restarted.sourceService.listSources().find((sourceRecord) => sourceRecord.name === 'Rate Limited RSS');
+
+  assert.equal(restarted.getLastRunReport().runId, report.runId);
+  assert.equal(restarted.servingService.getHome().dataStatus.state, 'partial_live');
+  assert.equal(failedSource.health.failureCount, 1);
+  assert.equal(failedSource.health.lastErrorCategory, 'rate_limited');
+  assert.equal(failedSource.nextFetchAt, '2026-04-21T13:00:00.000Z');
 });
 
 function createSeedSources(records) {
