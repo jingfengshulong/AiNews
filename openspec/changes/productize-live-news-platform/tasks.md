@@ -1,10 +1,10 @@
 ## 1. Persistence Foundation
 
-- [ ] 1.1 Add serialization and restore tests for the runtime store maps, indexes, counters, queues, and latest run metadata
-- [ ] 1.2 Implement store snapshot serialization/deserialization with version metadata and safe defaults
-- [ ] 1.3 Implement atomic file-backed snapshot load/save utilities using only built-in Node APIs
-- [ ] 1.4 Wire optional snapshot path configuration into live runtime creation and scripts
-- [ ] 1.5 Verify a live run can restart and retain prior sources, raw items, articles, signals, and counters
+- [x] 1.1 Add serialization and restore tests for the runtime store maps, indexes, counters, queues, and latest run metadata
+- [x] 1.2 Implement store snapshot serialization/deserialization with version metadata and safe defaults
+- [x] 1.3 Implement atomic file-backed snapshot load/save utilities using only built-in Node APIs
+- [x] 1.4 Wire optional snapshot path configuration into live runtime creation and scripts
+- [x] 1.5 Verify a live run can restart and retain prior sources, raw items, articles, signals, and counters
 
 ## 2. Incremental Refresh And Source Health
 

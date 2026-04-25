@@ -10,7 +10,8 @@ const config = await loadConfigFromEnvFile();
 applyLiveEnvOptions(config);
 const runtime = await createLiveRuntime({
   config,
-  requestTimeoutMs: liveRequestTimeoutMs()
+  requestTimeoutMs: liveRequestTimeoutMs(),
+  snapshotPath: liveRuntimeSnapshotPath()
 });
 const sourceIds = sourceIdsFromEnv(runtime);
 const port = Number(process.env.PORT || 4100);
@@ -64,6 +65,13 @@ function liveMaxItemsPerSource() {
 function liveRequestTimeoutMs() {
   const value = Number(process.env.LIVE_REQUEST_TIMEOUT_MS || 0);
   return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function liveRuntimeSnapshotPath() {
+  if (process.env.LIVE_DISABLE_PERSISTENCE === '1') {
+    return undefined;
+  }
+  return process.env.LIVE_RUNTIME_SNAPSHOT_PATH || '.data/news-runtime.json';
 }
 
 function sourceIdsFromEnv(runtime) {

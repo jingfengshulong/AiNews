@@ -3,6 +3,7 @@ import './migrations.test.mjs';
 import './source-management.test.mjs';
 import './ingestion-queue.test.mjs';
 import './redis-queue.test.mjs';
+import './runtime-persistence.test.mjs';
 import './raw-items.test.mjs';
 import './rss-atom-adapter.test.mjs';
 import './other-source-adapters.test.mjs';

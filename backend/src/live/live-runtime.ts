@@ -1,6 +1,12 @@
 import { createOpenAICompatibleEnrichmentProvider } from '../ai/openai-compatible-enrichment-provider.ts';
 import { createNewsServingService } from '../api/news-serving-service.ts';
 import { InMemoryStore } from '../db/in-memory-store.ts';
+import {
+  loadRuntimeSnapshot,
+  restoreRuntimeStore,
+  saveRuntimeSnapshot,
+  serializeRuntimeStore
+} from '../db/runtime-snapshot.ts';
 import { ArticleFetcher } from '../ingestion/article-fetcher.ts';
 import { ArticleRepository } from '../ingestion/article-repository.ts';
 import { ArxivAdapter } from '../ingestion/arxiv-adapter.ts';
@@ -42,10 +48,12 @@ export async function createLiveRuntime({
   maxItemsPerSource = defaultMaxItemsPerSource,
   requestTimeoutMs = 15_000,
   staleAfterMs = defaultStaleAfterMs,
+  snapshotPath,
   now = () => new Date()
 } = {}) {
   const liveFetchImpl = withRequestTimeout(fetchImpl, requestTimeoutMs);
-  const store = new InMemoryStore();
+  const restored = await restoreSnapshot(snapshotPath);
+  const store = restored.store;
   const queue = new InMemoryQueue(store);
   const sourceService = new SourceService(new SourceRepository(store));
   const rawItemRepository = new RawItemRepository(store);
@@ -56,10 +64,12 @@ export async function createLiveRuntime({
   const scoreComponentRepository = new ScoreComponentRepository(store);
   topicRepository.seedDefaultTopics();
 
-  seedSources(sourceService);
+  if (sourceService.listSources().length === 0) {
+    seedSources(sourceService);
+  }
   activateConfiguredLiveSources({ sourceService, config });
   const sources = sourceService.listSources();
-  let lastRunReport = createInitialReport({ now, sources });
+  let lastRunReport = restored.metadata.latestRunReport || createInitialReport({ now, sources });
 
   const servingService = createNewsServingService({
     signalRepository,
@@ -106,9 +116,32 @@ export async function createLiveRuntime({
         now
       });
       lastRunReport = report;
+      await persistSnapshot({ snapshotPath, store, lastRunReport });
       return clone(report);
     }
   };
+}
+
+async function restoreSnapshot(snapshotPath) {
+  if (!snapshotPath) {
+    return { store: new InMemoryStore(), metadata: {} };
+  }
+  const snapshot = await loadRuntimeSnapshot(snapshotPath);
+  if (!snapshot) {
+    return { store: new InMemoryStore(), metadata: {} };
+  }
+  return restoreRuntimeStore(snapshot);
+}
+
+async function persistSnapshot({ snapshotPath, store, lastRunReport }) {
+  if (!snapshotPath) {
+    return;
+  }
+  await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
+    metadata: {
+      latestRunReport: lastRunReport
+    }
+  }));
 }
 
 export function evaluateLiveSourceReadiness({ sources = [], config = {}, sourceIds } = {}) {
