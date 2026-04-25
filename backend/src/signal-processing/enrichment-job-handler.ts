@@ -41,6 +41,23 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
       sourceService
     });
 
+    if (!provider?.generate || provider.fallbackOnly) {
+      const fallback = createFallbackEnrichmentOutput(context);
+      signalRepository.updateEnrichmentFallback(signal.id, fallback, {
+        provider: provider?.name || 'fallback',
+        generatedAt: new Date().toISOString(),
+        errorCategory: provider?.fallbackReason || 'provider_unavailable',
+        sourceCount: context.sources.length
+      });
+      return {
+        signalId: signal.id,
+        enriched: false,
+        fallback: true,
+        keyPoints: fallback.keyPoints.length,
+        timelineItems: fallback.timeline.length
+      };
+    }
+
     try {
       const output = await provider.generate(context);
       const validated = validateEnrichmentOutput(output, context);
@@ -57,11 +74,13 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
       };
     } catch (error) {
       const category = error.category || 'enrichment_failed';
+      const fallback = createFallbackEnrichmentOutput(context);
       signalRepository.updateEnrichmentFailure(signal.id, error.message, {
         provider: provider.name || 'custom',
         failedAt: new Date().toISOString(),
-        errorCategory: category
-      });
+        errorCategory: category,
+        fallbackGenerated: true
+      }, fallback);
       throw new EnrichmentJobError(error.message, category);
     }
   };
@@ -132,4 +151,64 @@ function buildEnrichmentContext({ signal, signalRepository, articleRepository, s
       fullTextDisplayAllowed: article.fullTextDisplayAllowed
     }))
   };
+}
+
+export function createFallbackEnrichmentOutput(context) {
+  const sources = asArray(context.sources);
+  const articles = asArray(context.articles);
+  const leadArticle = articles[0];
+  const sourceMix = sources.map((source) => ({
+    sourceId: source.id,
+    sourceName: source.name,
+    role: roleForSource(source)
+  }));
+  const keyPoints = articles.slice(0, 3).map((article) => ({
+    text: `${sourceNameFor(sources, article.sourceId)} 提供了与该信号相关的基础来源信息。`,
+    sourceIds: [article.sourceId]
+  }));
+
+  return {
+    aiBrief: `${context.signal.title} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`,
+    keyPoints: keyPoints.length ? keyPoints : sources.slice(0, 3).map((source) => ({
+      text: `${source.name} 提供了该信号的基础来源信息。`,
+      sourceIds: [source.id]
+    })),
+    timeline: articles.slice(0, 4).map((article) => ({
+      label: `${sourceNameFor(sources, article.sourceId)} 捕获了相关来源。`,
+      at: article.publishedAt,
+      sourceIds: [article.sourceId]
+    })),
+    sourceMix,
+    nextWatch: leadArticle
+      ? '继续关注官方更新、独立报道和更多来源确认。'
+      : '继续关注后续来源确认和更新时间。',
+    relatedSignalIds: []
+  };
+}
+
+function roleForSource(source) {
+  if (source.family === 'company_announcement') {
+    return 'official';
+  }
+  if (source.family === 'research') {
+    return 'research';
+  }
+  if (source.family === 'community') {
+    return 'community';
+  }
+  if (source.family === 'product_launch') {
+    return 'product';
+  }
+  return 'media';
+}
+
+function sourceNameFor(sources, sourceId) {
+  return sources.find((source) => source.id === sourceId)?.name || '未知来源';
+}
+
+function asArray(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
 }

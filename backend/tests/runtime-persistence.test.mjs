@@ -368,22 +368,22 @@ const enrichmentProvider = {
   name: 'runtime-persistence-test',
   async generate(context) {
     return {
-      aiBrief: `${context.signal.title} has persisted live evidence.`,
+      aiBrief: `${context.signal.title} 已保留持久化实时来源证据。`,
       keyPoints: context.sources.map((sourceRecord) => ({
-        text: `${sourceRecord.name} provided persisted evidence.`,
+        text: `${sourceRecord.name} 提供了持久化来源证据。`,
         sourceIds: [sourceRecord.id]
       })),
       timeline: context.articles.map((article) => ({
-        label: `${article.title} was captured.`,
+        label: `${article.title} 已被采集并保留。`,
         at: article.publishedAt,
         sourceIds: [article.sourceId]
       })),
       sourceMix: context.sources.map((sourceRecord) => ({
         sourceId: sourceRecord.id,
         sourceName: sourceRecord.name,
-        role: 'lead'
+        role: sourceRecord.family === 'company_announcement' ? 'official' : 'media'
       })),
-      nextWatch: 'Watch whether persistence survives further refreshes.',
+      nextWatch: '继续关注后续刷新后数据是否保持可见。',
       relatedSignalIds: []
     };
   }

@@ -10,7 +10,10 @@ export function validateEnrichmentOutput(output, context) {
   const normalized = normalizeOutput(output);
   const errors = [];
 
-  if (wordCount(normalized.aiBrief) > 90) {
+  if (!hasCjk(normalized.aiBrief)) {
+    errors.push('User-facing enrichment text must use Simplified Chinese');
+  }
+  if (wordCount(normalized.aiBrief) > 90 || visibleLength(normalized.aiBrief) > 220) {
     errors.push('AI brief is too long');
   }
   if (normalized.keyPoints.length === 0 || normalized.keyPoints.length > 6) {
@@ -22,13 +25,19 @@ export function validateEnrichmentOutput(output, context) {
   if (!normalized.sourceMix.length) {
     errors.push('Source mix is required for attribution');
   }
-  if (wordCount(normalized.nextWatch) > 60) {
+  if (!hasCjk(normalized.nextWatch)) {
+    errors.push('Next-watch text must use Simplified Chinese');
+  }
+  if (wordCount(normalized.nextWatch) > 60 || visibleLength(normalized.nextWatch) > 140) {
     errors.push('Next-watch text is too long');
   }
 
   const sourceIds = new Set(context.sources.map((source) => source.id));
   for (const point of normalized.keyPoints) {
-    if (wordCount(point.text) > 45) {
+    if (!hasCjk(point.text)) {
+      errors.push('Key points must use Simplified Chinese');
+    }
+    if (wordCount(point.text) > 45 || visibleLength(point.text) > 100) {
       errors.push('Key point is too long');
     }
     if (!point.sourceIds.length || point.sourceIds.some((sourceId) => !sourceIds.has(sourceId))) {
@@ -36,7 +45,10 @@ export function validateEnrichmentOutput(output, context) {
     }
   }
   for (const item of normalized.timeline) {
-    if (wordCount(item.label) > 45) {
+    if (!hasCjk(item.label)) {
+      errors.push('Timeline items must use Simplified Chinese');
+    }
+    if (wordCount(item.label) > 45 || visibleLength(item.label) > 100) {
       errors.push('Timeline item is too long');
     }
     if (!item.sourceIds.length || item.sourceIds.some((sourceId) => !sourceIds.has(sourceId))) {
@@ -97,8 +109,10 @@ function copiedRestrictedTextMatch(output, context) {
       continue;
     }
     const sourceText = normalizedText(article.textForAI || '');
-    const windows = tokenWindows(sourceText.split(' '), 12);
-    if (windows.some((window) => outputText.includes(window))) {
+    const wordWindows = tokenWindows(sourceText.split(' '), 12);
+    const cjkWindows = characterWindows(sourceText.replace(/\s+/g, ''), 24);
+    const compactOutput = outputText.replace(/\s+/g, '');
+    if (wordWindows.some((window) => outputText.includes(window)) || cjkWindows.some((window) => compactOutput.includes(window))) {
       return {
         sourceName: source.name
       };
@@ -119,12 +133,35 @@ function tokenWindows(tokens, size) {
   return windows;
 }
 
+function characterWindows(value, size) {
+  if (!hasCjk(value)) {
+    return [];
+  }
+  const chars = Array.from(value);
+  if (chars.length < size) {
+    return [];
+  }
+  const windows = [];
+  for (let index = 0; index <= chars.length - size; index += 1) {
+    windows.push(chars.slice(index, index + size).join(''));
+  }
+  return windows;
+}
+
 function normalizedText(value) {
   return cleanText(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function visibleLength(value) {
+  return Array.from(cleanText(value)).length;
+}
+
+function hasCjk(value) {
+  return /[\u4e00-\u9fff]/.test(String(value || ''));
 }
 
 function wordCount(value) {

@@ -134,20 +134,20 @@ test('enrichment jobs are enqueued for pending signals and persist attributable 
   });
   const handler = createHandler(runtime, {
     generate: async (context) => ({
-      aiBrief: `${context.signal.title} is gaining attention because official and media sources both describe new agent tooling.`,
+      aiBrief: `${context.signal.title} 正在形成可展示的资讯信号：官方来源确认了工具发布，媒体来源补充了开发者采用背景。`,
       keyPoints: [
-        { text: 'Official source confirms the SDK launch.', sourceIds: [official.id] },
-        { text: 'Media coverage adds developer adoption context.', sourceIds: [media.id] }
+        { text: '官方来源确认了 Agent SDK 的发布信息。', sourceIds: [official.id] },
+        { text: '媒体报道补充了开发者采用和落地场景。', sourceIds: [media.id] }
       ],
       timeline: [
-        { label: 'Official launch post published.', at: '2026-04-21T08:00:00.000Z', sourceIds: [official.id] },
-        { label: 'Media coverage followed with developer context.', at: '2026-04-21T09:00:00.000Z', sourceIds: [media.id] }
+        { label: '官方发布 Agent SDK 更新。', at: '2026-04-21T08:00:00.000Z', sourceIds: [official.id] },
+        { label: '媒体跟进开发者反应和使用场景。', at: '2026-04-21T09:00:00.000Z', sourceIds: [media.id] }
       ],
       sourceMix: [
         { sourceId: official.id, sourceName: 'OpenAI News', role: 'official' },
         { sourceId: media.id, sourceName: 'Tech Media', role: 'media' }
       ],
-      nextWatch: 'Watch for SDK adoption examples and safety guidance from official sources.',
+      nextWatch: '继续关注官方迁移指南、示例项目和企业采用反馈。',
       relatedSignalIds: []
     })
   });
@@ -161,11 +161,11 @@ test('enrichment jobs are enqueued for pending signals and persist attributable 
   assert.equal(summary.failed, 0);
   assert.equal(completedJob.status, 'completed');
   assert.equal(updated.enrichmentStatus, 'completed');
-  assert.match(updated.aiBrief, /gaining attention/);
+  assert.match(updated.aiBrief, /资讯信号/);
   assert.equal(updated.keyPoints.length, 2);
   assert.equal(updated.timeline.length, 2);
   assert.equal(updated.sourceMix.length, 2);
-  assert.match(updated.nextWatch, /adoption/);
+  assert.match(updated.nextWatch, /继续关注/);
   assert.deepEqual(updated.relatedSignalIds, []);
   assert.equal(updated.enrichmentError, undefined);
 });
@@ -178,7 +178,7 @@ test('enrichment validation rejects copied restricted full text and preserves fa
     trustScore: 0.7,
     usagePolicy: restrictedUsagePolicy
   });
-  const copiedSentence = 'OpenAI launches a new Agent SDK for developers with tool use workflow automation and integration hooks across enterprise systems.';
+  const copiedSentence = 'OpenAI 发布新的 Agent SDK，面向开发者提供工具调用、工作流自动化和企业系统集成能力。';
   const article = createArticle(runtime.articleRepository, {
     rawItemId: 'raw_copied',
     sourceId: source.id,
@@ -198,10 +198,10 @@ test('enrichment validation rejects copied restricted full text and preserves fa
     handler: createHandler(runtime, {
       generate: async () => ({
         aiBrief: copiedSentence,
-        keyPoints: [{ text: 'Copied source language appears here.', sourceIds: [source.id] }],
-        timeline: [{ label: 'Story published.', sourceIds: [source.id] }],
+        keyPoints: [{ text: '输出复制了受限来源中的原文句子。', sourceIds: [source.id] }],
+        timeline: [{ label: '来源发布了相关报道。', sourceIds: [source.id] }],
         sourceMix: [{ sourceId: source.id, sourceName: source.name, role: 'media' }],
-        nextWatch: 'Watch for follow-up coverage.',
+        nextWatch: '继续关注后续报道和官方确认。',
         relatedSignalIds: []
       })
     })
@@ -215,7 +215,8 @@ test('enrichment validation rejects copied restricted full text and preserves fa
   assert.equal(failedJob.lastErrorCategory, 'enrichment_validation_failed');
   assert.equal(updated.enrichmentStatus, 'failed');
   assert.match(updated.enrichmentError, /copied restricted source text/i);
-  assert.equal(updated.aiBrief, undefined);
+  assert.match(updated.aiBrief, /基础来源信息/);
+  assert.doesNotMatch(updated.aiBrief, /企业系统集成能力/);
 });
 
 test('enrichment validation rejects overlong unattributed output', async () => {
@@ -245,11 +246,11 @@ test('enrichment validation rejects overlong unattributed output', async () => {
     queue: runtime.queue,
     handler: createHandler(runtime, {
       generate: async () => ({
-        aiBrief: Array.from({ length: 130 }, (_, index) => `word${index}`).join(' '),
-        keyPoints: [{ text: 'This point has no source references.', sourceIds: [] }],
+        aiBrief: '这'.repeat(260),
+        keyPoints: [{ text: '这个要点没有任何来源引用。', sourceIds: [] }],
         timeline: [],
         sourceMix: [],
-        nextWatch: 'Watch for independent replications.',
+        nextWatch: '继续关注独立复现实验。',
         relatedSignalIds: []
       })
     })
@@ -259,6 +260,44 @@ test('enrichment validation rejects overlong unattributed output', async () => {
   assert.equal(summary.failed, 1);
   assert.equal(updated.enrichmentStatus, 'failed');
   assert.match(updated.enrichmentError, /AI brief is too long|source mix is required|source references/i);
+  assert.match(updated.aiBrief, /基础来源信息/);
+});
+
+test('enrichment falls back safely when provider is unavailable', async () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'OpenAI News',
+    family: 'company_announcement',
+    trustScore: 0.95,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_fallback',
+    sourceId: source.id,
+    title: 'OpenAI introduces Agent SDK fallback coverage',
+    excerpt: 'A source excerpt suitable for fallback summary.',
+    textForAI: 'This backend-only sentence should never be exposed in fallback output because full text display is restricted.',
+    contentHash: 'f'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  runtime.queue.enqueue('enrichment', { signalId: signal.id }, { jobKey: `enrichment:${signal.id}` });
+
+  const summary = await processEnrichmentJobs({
+    queue: runtime.queue,
+    handler: createHandler(runtime, undefined)
+  });
+  const updated = runtime.signalRepository.getSignal(signal.id);
+
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.failed, 0);
+  assert.equal(updated.enrichmentStatus, 'fallback');
+  assert.equal(updated.enrichmentMeta.errorCategory, 'provider_unavailable');
+  assert.match(updated.aiBrief, /基础来源信息/);
+  assert.equal(updated.sourceMix[0].sourceId, source.id);
+  assert.doesNotMatch(updated.aiBrief, /backend-only sentence/);
 });
 
 test('worker can run queued enrichment jobs through the configured enrichment handler', async () => {
@@ -289,11 +328,11 @@ test('worker can run queued enrichment jobs through the configured enrichment ha
     logger: createMemoryLogger(),
     enrichmentJobHandler: createHandler(runtime, {
       generate: async () => ({
-        aiBrief: 'OpenAI introduced model routing updates with developer-facing changes.',
-        keyPoints: [{ text: 'The update affects developer API routing.', sourceIds: [source.id] }],
-        timeline: [{ label: 'Official update published.', sourceIds: [source.id] }],
+        aiBrief: 'OpenAI 发布了模型路由更新，重点影响开发者 API 的调用和迁移节奏。',
+        keyPoints: [{ text: '这次更新会影响开发者 API 的路由方式。', sourceIds: [source.id] }],
+        timeline: [{ label: '官方发布模型路由更新。', sourceIds: [source.id] }],
         sourceMix: [{ sourceId: source.id, sourceName: source.name, role: 'official' }],
-        nextWatch: 'Watch for migration notes and developer feedback.',
+        nextWatch: '继续关注迁移说明和开发者反馈。',
         relatedSignalIds: []
       })
     })

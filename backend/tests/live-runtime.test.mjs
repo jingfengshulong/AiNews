@@ -103,13 +103,13 @@ const enrichmentProvider = {
   name: 'live-test-enrichment',
   async generate(context) {
     return {
-      aiBrief: `${context.signal.title} has live evidence from ${context.sources.length} sources.`,
+      aiBrief: `${context.signal.title} 已由 ${context.sources.length} 个实时来源提供证据。`,
       keyPoints: context.sources.slice(0, 2).map((sourceRecord) => ({
-        text: `${sourceRecord.name} contributed evidence.`,
+        text: `${sourceRecord.name} 提供了实时来源证据。`,
         sourceIds: [sourceRecord.id]
       })),
       timeline: context.articles.slice(0, 2).map((article) => ({
-        label: `${article.title} was published.`,
+        label: `${article.title} 已发布并被采集。`,
         at: article.publishedAt,
         sourceIds: [article.sourceId]
       })),
@@ -118,7 +118,7 @@ const enrichmentProvider = {
         sourceName: sourceRecord.name,
         role: sourceRecord.family === 'company_announcement' ? 'official' : 'supporting'
       })),
-      nextWatch: 'Watch for more live source confirmations.',
+      nextWatch: '继续关注更多实时来源确认。',
       relatedSignalIds: []
     };
   }

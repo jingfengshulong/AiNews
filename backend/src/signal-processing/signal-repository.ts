@@ -108,13 +108,45 @@ export class SignalRepository {
     return cloneRecord(updated);
   }
 
-  updateEnrichmentFailure(id, message, meta = {}) {
+  updateEnrichmentFallback(id, output, meta = {}) {
     const existing = this.store.signals.get(id);
     if (!existing) {
       throw new Error(`Signal not found: ${id}`);
     }
     const updated = {
       ...existing,
+      summary: output.aiBrief,
+      aiBrief: output.aiBrief,
+      keyPoints: output.keyPoints,
+      timeline: output.timeline,
+      sourceMix: output.sourceMix,
+      nextWatch: output.nextWatch,
+      relatedSignalIds: output.relatedSignalIds || [],
+      enrichmentStatus: 'fallback',
+      enrichmentError: undefined,
+      enrichmentMeta: meta,
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
+  updateEnrichmentFailure(id, message, meta = {}, fallbackOutput) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      ...(fallbackOutput ? {
+        summary: fallbackOutput.aiBrief,
+        aiBrief: fallbackOutput.aiBrief,
+        keyPoints: fallbackOutput.keyPoints,
+        timeline: fallbackOutput.timeline,
+        sourceMix: fallbackOutput.sourceMix,
+        nextWatch: fallbackOutput.nextWatch,
+        relatedSignalIds: fallbackOutput.relatedSignalIds || []
+      } : {}),
       enrichmentStatus: 'failed',
       enrichmentError: message,
       enrichmentMeta: meta,

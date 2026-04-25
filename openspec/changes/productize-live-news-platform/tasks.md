@@ -22,9 +22,9 @@
 
 ## 4. AI Enrichment Quality
 
-- [ ] 4.1 Add tests for product-grade Chinese enrichment output shape and validation limits
-- [ ] 4.2 Tighten the enrichment prompt/normalizer for AI brief, key points, timeline, source mix, next-watch text, and related signals
-- [ ] 4.3 Preserve fallback summaries and accurate enrichment status when AI credentials are missing or provider output is invalid
+- [x] 4.1 Add tests for product-grade Chinese enrichment output shape and validation limits
+- [x] 4.2 Tighten the enrichment prompt/normalizer for AI brief, key points, timeline, source mix, next-watch text, and related signals
+- [x] 4.3 Preserve fallback summaries and accurate enrichment status when AI credentials are missing or provider output is invalid
 
 ## 5. Serving API And Frontend States
 

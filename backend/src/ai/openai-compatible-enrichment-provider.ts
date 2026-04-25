@@ -71,7 +71,7 @@ function createRequestBody({ model, context }) {
   return {
     model,
     temperature: 0.2,
-    max_tokens: 1200,
+    max_tokens: 1600,
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -79,9 +79,10 @@ function createRequestBody({ model, context }) {
         content: [
           'You are an AI news editor for a Chinese AI intelligence product.',
           'Return valid JSON only. Do not use markdown.',
-          'Use Simplified Chinese for user-facing text.',
+          'Write polished Simplified Chinese for every user-facing field.',
+          'Produce an editorial brief, 2 to 4 key points, source-grounded timeline, source mix, next-watch text, and related signals.',
           'Every key point and timeline item must cite valid sourceIds from the input.',
-          'Summaries must be short, transformative, and must not copy long source passages.'
+          'Summaries must be short, transformative, and must not copy long source passages or expose backend-only full text.'
         ].join(' ')
       },
       {
@@ -96,19 +97,21 @@ function createPromptPayload(context) {
   return {
     task: 'Generate AI enrichment for this clustered news signal.',
     outputSchema: {
-      aiBrief: 'string, <= 90 words',
-      keyPoints: [{ text: 'string, <= 45 words', sourceIds: ['source id'] }],
-      timeline: [{ label: 'string, <= 45 words', at: 'ISO timestamp when available', sourceIds: ['source id'] }],
+      aiBrief: 'Simplified Chinese string, <= 220 Chinese characters',
+      keyPoints: [{ text: 'Simplified Chinese string, <= 100 Chinese characters', sourceIds: ['source id'] }],
+      timeline: [{ label: 'Simplified Chinese string, <= 100 Chinese characters', at: 'ISO timestamp when available', sourceIds: ['source id'] }],
       sourceMix: [{ sourceId: 'source id', sourceName: 'source name', role: 'official|media|research|community|product|supporting' }],
-      nextWatch: 'string, <= 60 words',
-      relatedSignalIds: ['signal id, empty array if unknown']
+      nextWatch: 'Simplified Chinese string, <= 140 Chinese characters',
+      relatedSignalIds: ['signal id from relatedSignalCandidates only, empty array if unknown']
     },
     constraints: [
       'Use only the provided sources and articles.',
       'Do not invent source IDs, URLs, dates, claims, or related signals.',
+      'Return 2 to 4 keyPoints unless only one source exists.',
       'Prefer official and research sources when resolving conflicts.',
       'Do not copy any 12-word-or-longer passage from article text.',
-      'If evidence is thin, say what is known and keep the output conservative.'
+      'If evidence is thin, say what is known and keep the output conservative.',
+      'Do not include backend-only full article text in the output.'
     ],
     signal: {
       id: context.signal?.id,
@@ -134,6 +137,11 @@ function createPromptPayload(context) {
       title: item.title,
       url: item.url,
       publishedAt: item.publishedAt
+    })),
+    relatedSignalCandidates: asArray(context.relatedSignals).map((signal) => ({
+      id: signal.id,
+      title: signal.title,
+      primaryPublishedAt: signal.primaryPublishedAt
     })),
     articles: asArray(context.articles).map((article) => ({
       id: article.id,
@@ -223,7 +231,7 @@ function clip(value, maxLength) {
   if (text.length <= maxLength) {
     return text;
   }
-  return `${text.slice(0, maxLength - 1).trim()}…`;
+  return `${text.slice(0, maxLength - 3).trim()}...`;
 }
 
 function asArray(value) {

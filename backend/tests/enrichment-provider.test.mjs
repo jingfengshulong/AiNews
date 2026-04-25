@@ -122,9 +122,15 @@ test('OpenAI-compatible enrichment provider sends structured chat request and pa
   assert.equal(requests[0].options.headers.Authorization, 'Bearer test-secret');
   assert.equal(requests[0].body.model, 'test-model');
   assert.equal(requests[0].body.temperature, 0.2);
+  assert.equal(requests[0].body.max_tokens, 1600);
   assert.deepEqual(requests[0].body.response_format, { type: 'json_object' });
-  assert.match(JSON.stringify(requests[0].body.messages), /source-official/);
-  assert.match(JSON.stringify(requests[0].body.messages), /sourceIds/);
+  const promptText = JSON.stringify(requests[0].body.messages);
+  assert.match(promptText, /source-official/);
+  assert.match(promptText, /sourceIds/);
+  assert.match(promptText, /Simplified Chinese string, <= 220 Chinese characters/);
+  assert.match(promptText, /2 to 4 keyPoints/);
+  assert.match(promptText, /relatedSignalCandidates/);
+  assert.match(promptText, /backend-only full article text/);
   assert.equal(output.keyPoints.length, 2);
   assert.equal(output.sourceMix[0].sourceId, 'source-official');
 });

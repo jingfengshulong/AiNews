@@ -451,18 +451,20 @@ function createLiveEnrichmentProvider({ config = {}, fetchImpl = globalThis.fetc
 function createMetadataEnrichmentProvider() {
   return {
     name: 'metadata-enrichment',
+    fallbackOnly: true,
+    fallbackReason: 'ai_credentials_missing',
     async generate(context) {
       const sources = asArray(context.sources);
       const articles = asArray(context.articles);
       const leadSource = sources[0];
       return {
-        aiBrief: `${context.signal.title} is backed by ${sources.length} live source${sources.length === 1 ? '' : 's'}.`,
+        aiBrief: `${context.signal.title} 已由 ${sources.length} 个实时来源提供基础证据。`,
         keyPoints: sources.slice(0, 3).map((source) => ({
-          text: `${source.name} provided live evidence for this signal.`,
+          text: `${source.name} 提供了该信号的实时来源证据。`,
           sourceIds: [source.id]
         })),
         timeline: articles.slice(0, 4).map((article) => ({
-          label: `${article.title} was captured from ${sourceNameFor(sources, article.sourceId)}.`,
+          label: `${sourceNameFor(sources, article.sourceId)} 捕获了相关来源。`,
           at: article.publishedAt,
           sourceIds: [article.sourceId]
         })),
@@ -471,7 +473,7 @@ function createMetadataEnrichmentProvider() {
           sourceName: source.name,
           role: roleForSource(source, leadSource?.id)
         })),
-        nextWatch: 'Watch for additional source confirmations, follow-up analysis, and official updates.',
+        nextWatch: '继续关注更多来源确认、后续分析和官方更新。',
         relatedSignalIds: []
       };
     }
