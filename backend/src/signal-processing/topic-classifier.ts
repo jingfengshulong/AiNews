@@ -107,6 +107,9 @@ async function classifyContext(context, {
   });
   addSourceFamilyTopics(candidates, context);
   for (const rule of keywordRules) {
+    if (rule.applies && !rule.applies(context)) {
+      continue;
+    }
     const matchedTerms = matchingTerms(context.text, rule.terms);
     if (matchedTerms.length > 0) {
       candidates.push({
@@ -121,9 +124,16 @@ async function classifyContext(context, {
   }
 
   return dedupeCandidates(candidates)
-    .filter((candidate) => allowedSlugs.has(candidate.topicSlug))
+    .filter((candidate) => allowedSlugs.has(candidate.topicSlug) && topicAllowedForContext(candidate.topicSlug, context))
     .sort((a, b) => b.confidence - a.confidence || a.topicSlug.localeCompare(b.topicSlug))
     .slice(0, maxTopicsPerSignal);
+}
+
+function topicAllowedForContext(topicSlug, context) {
+  if (topicSlug === 'company-announcements') {
+    return context.sourceFamilies.includes('company_announcement');
+  }
+  return true;
 }
 
 async function aiCandidatesForContext({ context, allowedTopics, allowedSlugs, topicSuggestionProvider }) {
@@ -258,7 +268,7 @@ const keywordRules = [
     topicSlug: 'ai-agent',
     confidence: 0.82,
     reason: 'The signal mentions agents, tool use, or workflow automation.',
-    terms: [/\bagent\b/i, /\bagentic\b/i, /\btool use\b/i, /\bworkflow automation\b/i, /\bautonomous workflow\b/i]
+    terms: [/\bagents?\b/i, /\bagentic\b/i, /\btool use\b/i, /\bworkflow automation\b/i, /\bautonomous workflow\b/i]
   },
   {
     topicSlug: 'large-model-products',
@@ -300,6 +310,7 @@ const keywordRules = [
     topicSlug: 'company-announcements',
     confidence: 0.76,
     reason: 'The signal uses announcement or release language associated with official updates.',
+    applies: (context) => context.sourceFamilies.includes('company_announcement'),
     terms: [/\bannounces?\b/i, /\bintroduces?\b/i, /\breleases?\b/i, /\blaunched?\b/i, /\brelease notes?\b/i]
   }
 ];

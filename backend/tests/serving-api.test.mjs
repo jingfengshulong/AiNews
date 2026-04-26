@@ -449,6 +449,63 @@ test('GET /api/signals/:id returns attributable detail and never exposes restric
   });
 });
 
+test('GET /api/signals/:id cleans stale community topics and internal repair text', async () => {
+  const runtime = createRuntime();
+  const community = createSource(runtime.sourceService, {
+    name: 'Hacker News AI Search',
+    sourceType: 'hacker_news',
+    family: 'community',
+    trustScore: 0.58
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_ctxbrew',
+    sourceId: community.id,
+    title: 'ctxbrew: Ship and Use LLM-friendly package context',
+    excerpt: 'ctxbrew helps package AI-friendly library context.',
+    publishedAt: '2026-04-21T10:00:00.000Z',
+    textForAI: 'ctxbrew helps AI assistants package and use LLM-friendly library context.',
+    contentHash: '8'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: 'GitHub - artem-mangilev/ctxbrew: 📦 Ship & Use AI-friendly package context.',
+    summary: 'ctxbrew helps package AI-friendly library context.',
+    primaryPublishedAt: article.publishedAt,
+    heatScore: 61,
+    signalScore: 49,
+    aiBrief: 'ctxbrew 是一个为 AI 助手设计的开源工具，旨在帮助库作者轻松打包并发布上下文信息。这条资讯已经进入后端处理流程，并保留 Hacker News AI Search 等来源的归因。',
+    keyPoints: [{ text: 'ctxbrew 提供 LLM 上下文打包能力，主要面向库作者和 AI 助手工作流。', sourceIds: [community.id] }],
+    sourceMix: [{ sourceId: community.id, sourceName: community.name, role: 'community' }],
+    nextWatch: '关注社区采用反馈、官方说明和是否出现独立报道。',
+    articles: [article],
+    topics: [
+      { slug: 'ai-agent', confidence: 0.82 },
+      { slug: 'company-announcements', confidence: 0.76 },
+      { slug: 'large-model-products', confidence: 0.76 }
+    ]
+  });
+  const servingService = createNewsServingService({
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicRepository: runtime.topicRepository,
+    scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: { mode: 'demo', stale: false, sourceOutcomeCounts: {} },
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const { response, body } = await getJson(baseUrl, `/api/signals/${signal.id}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.signal.sourceFamilies.includes('community'), true);
+    assert.equal(body.signal.topics.some((topic) => topic.slug === 'company-announcements'), false);
+    assert.equal(body.topics.some((topic) => topic.slug === 'company-announcements'), false);
+    assert.match(body.signal.summary, /LLM 上下文打包能力/);
+    assert.doesNotMatch(body.signal.summary, /后端处理流程/);
+    assert.doesNotMatch(body.signal.aiBrief, /后端处理流程/);
+  });
+});
+
 test('GET /api/signals/:id returns not found for missing or hidden signals', async () => {
   const { servingService, runtime } = seedServingFixture();
   const hidden = runtime.signalRepository.listSignals().find((signal) => signal.status === 'hidden');

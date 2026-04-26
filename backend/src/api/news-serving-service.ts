@@ -69,11 +69,12 @@ export function createNewsServingService({
       }
 
       const context = sourceContextForSignal(signal);
-      const topics = topicsForSignal(signal.id);
+      const sourceFamilies = sourceFamiliesForContext(context);
+      const topics = topicsForSignal(signal.id, sourceFamilies);
 
       return {
         dataStatus: resolveDataStatus({ visibleCount: rankedVisibleSignals().length }),
-        signal: signalSummary(signal),
+        signal: signalSummary(signal, { context, sourceFamilies, topics }),
         keyPoints: asArray(signal.keyPoints).map((point) => ({
           text: point.text,
           sources: sourceRefs(point.sourceIds, context.sources)
@@ -228,7 +229,7 @@ export function createNewsServingService({
       const visible = rankedVisibleSignals();
       return {
         topics: topicRepository.listTopics().map((topic) => {
-          const signals = visible.filter((signal) => topicsForSignal(signal.id).some((item) => item.slug === topic.slug));
+          const signals = visible.filter((signal) => topicsForSignal(signal.id, sourceFamiliesForSignal(signal)).some((item) => item.slug === topic.slug));
           return {
             ...topic,
             signalCount: signals.length,
@@ -244,7 +245,7 @@ export function createNewsServingService({
         return undefined;
       }
       const signals = rankedVisibleSignals()
-        .filter((signal) => topicsForSignal(signal.id).some((item) => item.slug === slug));
+        .filter((signal) => topicsForSignal(signal.id, sourceFamiliesForSignal(signal)).some((item) => item.slug === slug));
       const page = paginate(signals, pageOptions);
 
       return {
@@ -321,22 +322,24 @@ export function createNewsServingService({
     };
   }
 
-  function signalSummary(signal) {
-    const context = sourceContextForSignal(signal);
-    const topics = topicsForSignal(signal.id);
+  function signalSummary(signal, options = {}) {
+    const context = options.context || sourceContextForSignal(signal);
+    const sourceFamilies = options.sourceFamilies || sourceFamiliesForContext(context);
+    const topics = options.topics || topicsForSignal(signal.id, sourceFamilies);
+    const brief = userFacingBrief(signal);
     return {
       id: signal.id,
       slug: signal.slug,
       title: signal.title,
-      summary: signal.aiBrief || signal.summary,
-      aiBrief: signal.aiBrief,
+      summary: brief || signal.summary,
+      aiBrief: signal.aiBrief ? brief : signal.aiBrief,
       heatScore: signal.heatScore || 0,
       signalScore: signal.signalScore || 0,
       status: signal.status,
       primaryPublishedAt: signal.primaryPublishedAt,
       enrichmentStatus: signal.enrichmentStatus,
       sourceCount: context.sources.length,
-      sourceFamilies: unique(context.sources.map((source) => source.family).filter(Boolean)),
+      sourceFamilies,
       sources: context.sources.map((source) => sourceRef(source, context.articles)),
       topics,
       attribution: {
@@ -351,6 +354,26 @@ export function createNewsServingService({
     };
   }
 
+  function userFacingBrief(signal) {
+    const brief = cleanText(signal.aiBrief || signal.summary);
+    if (!brief || !/(后端处理流程|后台已保留)/.test(brief)) {
+      return brief;
+    }
+    const pointText = asArray(signal.keyPoints)
+      .map((point) => stripTerminalPunctuation(typeof point === 'string' ? point : point?.text))
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('；');
+    const nextWatch = stripTerminalPunctuation(signal.nextWatch);
+    const repaired = [
+      pointText ? `要点显示：${pointText}。` : '',
+      nextWatch ? `后续观察：${nextWatch}。` : ''
+    ].filter(Boolean).join('');
+    return repaired || brief
+      .replace(/。?这条资讯已经进入后端处理流程[^。]*。?/g, '')
+      .replace(/。?后台已保留[^。]*。?/g, '');
+  }
+
   function sourceContextForSignal(signal) {
     const links = signalRepository.listSignalArticles(signal.id);
     const articles = links
@@ -363,8 +386,17 @@ export function createNewsServingService({
     return { articles, sources };
   }
 
-  function topicsForSignal(signalId) {
-    return topicRepository.listSignalTopics(signalId).map((assignment) => {
+  function sourceFamiliesForSignal(signal) {
+    return sourceFamiliesForContext(sourceContextForSignal(signal));
+  }
+
+  function sourceFamiliesForContext(context) {
+    return unique(context.sources.map((source) => source.family).filter(Boolean));
+  }
+
+  function topicsForSignal(signalId, sourceFamilies = []) {
+    const familySet = new Set(sourceFamilies);
+    return topicRepository.listSignalTopics(signalId).filter((assignment) => isTopicVisibleForFamilies(assignment.topicSlug, familySet)).map((assignment) => {
       const topic = topicRepository.getTopicBySlug(assignment.topicSlug);
       return {
         id: topic?.id,
@@ -376,11 +408,21 @@ export function createNewsServingService({
     });
   }
 
+  function isTopicVisibleForFamilies(topicSlug, familySet) {
+    if (topicSlug === 'company-announcements') {
+      return familySet.has('company_announcement');
+    }
+    return true;
+  }
+
   function articleTopics(articleId) {
     const signalIds = signalRepository.listSignalArticles()
       .filter((link) => link.articleId === articleId)
       .map((link) => link.signalId);
-    const topics = signalIds.flatMap((signalId) => topicsForSignal(signalId));
+    const topics = signalIds.flatMap((signalId) => {
+      const signal = signalRepository.getSignal(signalId);
+      return topicsForSignal(signalId, signal ? sourceFamiliesForSignal(signal) : []);
+    });
     return uniqueBy(topics, (topic) => topic.slug);
   }
 
@@ -676,6 +718,10 @@ function offsetDateKey(value, offsetDays) {
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function stripTerminalPunctuation(value) {
+  return cleanText(value).replace(/[。.!?！？；;]+$/g, '');
 }
 
 function asArray(value) {

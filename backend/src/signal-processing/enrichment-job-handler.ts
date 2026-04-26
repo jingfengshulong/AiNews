@@ -193,25 +193,35 @@ function ensureSubstantiveEnrichmentOutput(output, context) {
   }
   return {
     ...output,
-    aiBrief: buildSubstantiveBrief(output?.aiBrief, context)
+    aiBrief: buildSubstantiveBrief(output?.aiBrief, context, output)
   };
 }
 
-function buildSubstantiveBrief(seed, context) {
+function buildSubstantiveBrief(seed, context, output = {}) {
   const sources = asArray(context.sources);
   const articles = asArray(context.articles);
   const sourceNames = sources.slice(0, 3).map((source) => source.name).filter(Boolean).join('、') || '已登记来源';
   const articleTitles = articles.slice(0, 2).map((article) => article.title).filter(Boolean).join('；') || context.signal.title;
   const title = clip(context.signal.title, 72);
   const opening = clip(cleanText(seed), 86) || `${title} 当前已有基础来源支撑。`;
-  const brief = [
+  const keyPointText = asArray(output.keyPoints)
+    .map((point) => stripTerminalPunctuation(typeof point === 'string' ? point : point?.text))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('；');
+  const nextWatch = stripTerminalPunctuation(output.nextWatch);
+  const repairedBrief = [
     opening,
-    `这条信号目前由${sourceNames}提供支撑，核心线索集中在“${title}”及相关来源标题。`,
-    `后台已保留原始链接和发布时间，前端只展示经过处理的摘要、要点和归因，避免直接暴露受限原文。`,
-    `后续应继续核对官方说明、独立报道、研究或社区反馈，判断该信息是否会影响产品发布、企业采用、技术路线或行业竞争格局。`,
+    keyPointText
+      ? `要点显示：${keyPointText}。`
+      : `这条信号目前由${sourceNames}提供支撑，核心线索集中在“${title}”及相关来源标题。`,
+    `来源归因显示为${sourceNames}，页面只展示经过处理的摘要、要点和可公开字段，避免直接暴露受限原文。`,
+    nextWatch
+      ? `后续观察：${nextWatch}。`
+      : `后续应继续核对官方说明、独立报道、研究或社区反馈，判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。`,
     `可优先回看这些来源标题：${clip(articleTitles, 80)}。`
   ].join('');
-  return finalizeSubstantiveBrief(ensureMinimumChineseLength(brief), {
+  return finalizeSubstantiveBrief(ensureMinimumChineseLength(repairedBrief), {
     seed,
     title,
     sourceNames
@@ -236,8 +246,8 @@ function finalizeSubstantiveBrief(value, { seed, title, sourceNames }) {
   const sourcePhrase = sourceNames ? `，并保留 ${clip(sourceNames, 42)} 等来源的归因` : '，并保留来源归因';
   return clipToVisibleLength([
     compactSeed,
-    `。这条资讯已经进入后端处理流程${sourcePhrase}。`,
-    '当前可确认的是：系统已经记录原始链接、发布时间、来源类型和标题证据，前端只展示经过处理的摘要、要点和可公开字段。',
+    `。这条资讯已完成来源归因整理${sourcePhrase}。`,
+    '当前可确认的是：系统记录了原始链接、发布时间、来源类型和标题证据，页面展示处理后的摘要、要点和可公开字段。',
     '后续需要继续观察官方说明、独立报道、研究或社区反馈是否增加，以判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。'
   ].join(''), 220);
 }
@@ -264,6 +274,10 @@ function sourceNameFor(sources, sourceId) {
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function stripTerminalPunctuation(value) {
+  return cleanText(value).replace(/[。.!?！？；;]+$/g, '');
 }
 
 function clip(value, maxLength) {

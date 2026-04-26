@@ -212,6 +212,8 @@ test('enrichment repairs short provider briefs before completing detail output',
   assert.ok(chineseCharCount(updated.aiBrief) >= 100);
   assert.match(updated.aiBrief, /太短摘要/);
   assert.match(updated.aiBrief, /OpenAI launches Agent SDK controls/);
+  assert.match(updated.aiBrief, /产品更新/);
+  assert.doesNotMatch(updated.aiBrief, /后端处理流程|后台已保留/);
 });
 
 test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {

@@ -290,6 +290,31 @@ test('detail page compacts long titles without losing the original title', async
   assert.match(document.querySelector('.detail-deck').textContent, /目前已保留基础来源信息/);
 });
 
+test('detail page cleans GitHub decorative repository titles for display', async () => {
+  const rawTitle = 'GitHub - artem-mangilev/ctxbrew: 📦 Ship & Use AI-friendly package context.';
+  const dom = await renderPage({
+    file: 'details.html',
+    url: 'http://localhost/details.html?id=sig_0042',
+    responses: {
+      '/api/signals/sig_0042': {
+        ...detailResponse,
+        signal: {
+          ...detailResponse.signal,
+          id: 'sig_0042',
+          title: rawTitle,
+          summary: 'ctxbrew 是一个为 AI 助手设计的开源工具。'
+        }
+      }
+    }
+  });
+  const document = dom.window.document;
+  const detailTitle = document.querySelector('.detail-title');
+
+  assert.equal(detailTitle.textContent, 'ctxbrew: Ship & Use AI-friendly package context.');
+  assert.equal(detailTitle.getAttribute('title'), rawTitle);
+  assert.doesNotMatch(detailTitle.textContent, /📦/u);
+});
+
 test('sources, dates, topics, and search pages render API data', async () => {
   const signal = homeResponse.leadSignal;
   const sourceDom = await renderPage({

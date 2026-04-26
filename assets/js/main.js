@@ -777,10 +777,17 @@
     const githubMatch = normalized.match(/^GitHub\s*-\s*([^:]+):\s*(.+)$/i);
     if (githubMatch) {
       const repoName = githubMatch[1].split("/").filter(Boolean).pop() || githubMatch[1];
-      return truncateAtWord(`${repoName}: ${firstSentence(githubMatch[2])}`, 76);
+      const repoTitle = cleanDecorativeTitleText(firstSentence(githubMatch[2]));
+      return truncateAtWord(`${repoName}: ${repoTitle}`, 76);
     }
 
     return truncateAtWord(normalized, 96);
+  }
+
+  function cleanDecorativeTitleText(value) {
+    return normalizeSpace(String(value || "")
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, "")
+      .replace(/^[\s:：\-–—|•·]+/, ""));
   }
 
   function heroLeadSummary(signal) {

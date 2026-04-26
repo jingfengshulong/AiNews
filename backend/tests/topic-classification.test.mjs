@@ -135,6 +135,43 @@ test('topic classifier assigns multiple explainable rule topics to a signal', as
   assert.ok(assignments.every((assignment) => assignment.evidence.matchedBy));
 });
 
+test('topic classifier does not treat community release wording as company announcements', async () => {
+  const runtime = createRuntime();
+  const community = createSource(runtime.sourceService, {
+    name: 'Hacker News AI Search',
+    sourceType: 'hacker_news',
+    family: 'community',
+    trustScore: 0.58
+  });
+  const { signal } = createSignalWithArticle(runtime, {
+    source: community,
+    rawItemId: 'raw_community_release',
+    title: 'Show HN: ctxbrew releases LLM-friendly package context for agents',
+    textForAI: 'ctxbrew releases LLM-friendly package context for AI agents and library maintainers.',
+    contentHash: '5'.repeat(64)
+  });
+
+  await new TopicClassifier({
+    topicRepository: runtime.topicRepository,
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicSuggestionProvider: {
+      suggestTopics: async () => ({
+        topics: [
+          { topicSlug: 'company-announcements', confidence: 0.99 },
+          { topicSlug: 'ai-agent', confidence: 0.91 }
+        ]
+      })
+    }
+  }).classifySignals();
+  const slugs = runtime.topicRepository.listSignalTopics(signal.id).map((assignment) => assignment.topicSlug);
+
+  assert.ok(slugs.includes('ai-agent'));
+  assert.ok(slugs.includes('large-model-products'));
+  assert.equal(slugs.includes('company-announcements'), false);
+});
+
 test('topic classifier covers research, video, edge, policy, funding, and model product topics', async () => {
   const runtime = createRuntime();
   const research = createSource(runtime.sourceService, {
