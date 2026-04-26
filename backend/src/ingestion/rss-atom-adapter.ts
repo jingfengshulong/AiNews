@@ -93,7 +93,7 @@ function parseRssItems({ channel, source, fetchedAt, responseMeta }) {
         sourceLanguage: source.language
       }
     };
-  });
+  }).filter((record) => matchesFilterKeywords(record, source.filterKeywords));
 }
 
 function parseAtomEntries({ feed, source, fetchedAt, responseMeta }) {
@@ -124,7 +124,7 @@ function parseAtomEntries({ feed, source, fetchedAt, responseMeta }) {
         sourceLanguage: source.language
       }
     };
-  });
+  }).filter((record) => matchesFilterKeywords(record, source.filterKeywords));
 }
 
 async function readLimitedText(response, maxBytes) {
@@ -216,6 +216,14 @@ function toIsoDate(value) {
 
 function fallbackExternalId({ title, url, publishedAt }) {
   return createHash('sha256').update([title, url, publishedAt].filter(Boolean).join('|')).digest('hex');
+}
+
+export function matchesFilterKeywords(record, filterKeywords) {
+  if (!filterKeywords || filterKeywords.length === 0) {
+    return true;
+  }
+  const haystack = [record.title, record.summary].filter(Boolean).join(' ').toLowerCase();
+  return filterKeywords.some((keyword) => haystack.includes(keyword.toLowerCase()));
 }
 
 function getHeader(headers, name) {

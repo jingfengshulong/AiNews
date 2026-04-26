@@ -1,4 +1,5 @@
 import { createOpenAICompatibleEnrichmentProvider } from '../ai/openai-compatible-enrichment-provider.ts';
+import { createRelevanceFilter } from '../ai/relevance-filter.ts';
 import { createNewsServingService } from '../api/news-serving-service.ts';
 import { InMemoryStore } from '../db/in-memory-store.ts';
 import {
@@ -116,6 +117,7 @@ export async function createLiveRuntime({
         enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl }),
         maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource,
         sourceIds: options.sourceIds,
+        fetchImpl,
         runSequence,
         now
       });
@@ -196,6 +198,7 @@ async function runLiveOnce({
   maxItemsPerSource,
   sourceIds,
   runSequence,
+  fetchImpl,
   now
 }) {
   const startedAtDate = now();
@@ -252,6 +255,9 @@ async function runLiveOnce({
     now: startedAtDate
   });
   applyProcessOutcomes({ processSummary, outcomesBySourceId });
+
+  // AI relevance filter: for general tech sources, use AI to judge if articles are AI-related
+  await applyRelevanceFilter({ articleRepository, sourceService, config, fetchImpl });
 
   const qualitySummary = new ArticleQualityService({
     articleRepository,
@@ -517,6 +523,52 @@ function applyProcessOutcomes({ processSummary, outcomesBySourceId }) {
     const outcome = outcomesBySourceId.get(sourceId);
     if (outcome) {
       outcome.processed = (outcome.processed || 0) + 1;
+    }
+  }
+}
+
+async function applyRelevanceFilter({ articleRepository, sourceService, config, fetchImpl }) {
+  const apiKey = config.secrets?.enrichment;
+  const model = config.enrichment?.model;
+  const baseUrl = config.enrichment?.baseUrl;
+
+  if (!apiKey || !model || !baseUrl || model === 'mock-enrichment') {
+    return;
+  }
+
+  const filter = createRelevanceFilter({ apiKey, model, baseUrl, fetchImpl });
+  if (!filter) {
+    return;
+  }
+
+  const articles = articleRepository.listArticles();
+  const sourcesWithKeywords = new Set();
+  for (const source of sourceService.listSources()) {
+    if (source.filterKeywords && source.filterKeywords.length > 0) {
+      sourcesWithKeywords.add(source.id);
+    }
+  }
+
+  const candidateArticles = articles.filter((article) =>
+    sourcesWithKeywords.has(article.sourceId) &&
+    article.qualityStatus !== 'low_quality'
+  );
+
+  if (candidateArticles.length === 0) {
+    return;
+  }
+
+  const relevantArticles = await filter.filterArticles(candidateArticles);
+  const relevantIds = new Set(relevantArticles.map((a) => a.id));
+
+  for (const article of candidateArticles) {
+    if (!relevantIds.has(article.id)) {
+      articleRepository.updateQualityStatus(article.id, {
+        qualityStatus: 'low_quality',
+        visibilityStatus: 'hidden_latest',
+        qualityReasons: ['irrelevant_to_topic'],
+        qualityCheckedAt: new Date().toISOString()
+      });
     }
   }
 }

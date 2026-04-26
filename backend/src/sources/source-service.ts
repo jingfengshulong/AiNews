@@ -18,6 +18,7 @@ export class SourceService {
       feedUrl: input.feedUrl,
       apiEndpoint: input.apiEndpoint,
       query: input.query,
+      filterKeywords: input.filterKeywords,
       fetchLimit: input.fetchLimit,
       language: input.language,
       fetchIntervalMinutes: input.fetchIntervalMinutes,

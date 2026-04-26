@@ -5,6 +5,18 @@ const attributionOnly = {
   attributionRequired: true
 };
 
+const aiKeywords = [
+  'AI', '人工智能', '大模型', '机器学习', '深度学习',
+  'LLM', 'GPT', 'Claude', 'DeepSeek', 'Gemini',
+  'transformer', '神经网络', '自然语言', '计算机视觉',
+  'AIGC', '生成式', '智能体', 'Agent', 'RAG',
+  '多模态', 'diffusion', 'embedding', '向量',
+  'OpenAI', 'Anthropic', '百度', '文心', '通义',
+  'Kimi', '豆包', '混元', '智谱', 'ChatGPT',
+  'Copilot', 'Sora', 'Midjourney', 'Stable Diffusion',
+  '芯片', 'GPU', '算力', '训练', '推理'
+];
+
 export function seedMvpSources(sourceService) {
   return [
     sourceService.createSource({
@@ -160,6 +172,135 @@ export function seedMvpSources(sourceService) {
       trustScore: 0.76,
       usagePolicy: attributionOnly,
       enabled: false
+    }),
+    // ── Chinese sources ──────────────────────────────────────────────
+    sourceService.createSource({
+      name: '量子位 QbitAI',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.qbitai.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 60,
+      trustScore: 0.82,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: 'InfoQ China',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.infoq.cn/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.78,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '36氪 36Kr',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://36kr.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 60,
+      trustScore: 0.76,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '雷峰网 Leiphone',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.leiphone.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.74,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '钛媒体 TMTPost',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.tmtpost.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.72,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '爱范儿 ifanr',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.ifanr.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.7,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: 'FreeBuf',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.freebuf.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.68,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '开源中国 OSChina',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.oschina.net/news/rss',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.66,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '少数派 SSPai',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://sspai.com/feed',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 180,
+      trustScore: 0.64,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: '阮一峰科技爱好者周刊',
+      sourceType: 'atom',
+      family: 'technology_media',
+      feedUrl: 'https://www.ruanyifeng.com/blog/atom.xml',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 1440,
+      trustScore: 0.72,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: 'Solidot 奇客',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.solidot.org/index.rss',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 120,
+      trustScore: 0.6,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
+    }),
+    sourceService.createSource({
+      name: 'cnBeta',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://www.cnbeta.com.tw/backend.php',
+      language: 'zh-CN',
+      fetchIntervalMinutes: 60,
+      trustScore: 0.58,
+      filterKeywords: aiKeywords,
+      usagePolicy: attributionOnly
     })
   ];
 }

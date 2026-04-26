@@ -13,6 +13,7 @@ import './signal-clustering.test.mjs';
 import './topic-classification.test.mjs';
 import './signal-scoring.test.mjs';
 import './enrichment-provider.test.mjs';
+import './relevance-filter.test.mjs';
 import './enrichment.test.mjs';
 import './fetch-job-handler.test.mjs';
 import './process-job-handler.test.mjs';

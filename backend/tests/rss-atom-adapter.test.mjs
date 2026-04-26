@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import { InMemoryStore } from '../src/db/in-memory-store.ts';
 import { RawItemRepository } from '../src/ingestion/raw-item-repository.ts';
-import { parseRssAtomFeed, RssAtomAdapter } from '../src/ingestion/rss-atom-adapter.ts';
+import { parseRssAtomFeed, RssAtomAdapter, matchesFilterKeywords } from '../src/ingestion/rss-atom-adapter.ts';
 import { ingestRssAtomSource } from '../src/ingestion/rss-atom-ingestion.ts';
 import { InMemoryQueue } from '../src/queue/in-memory-queue.ts';
 
@@ -109,4 +109,55 @@ test('RSS/Atom ingestion persists raw items and enqueues processing for new reco
   assert.equal(rawItemRepository.listRawItems().length, 1);
   assert.equal(queue.list('process').length, 1);
   assert.equal(queue.list('process')[0].payload.rawItemId, first.created[0].id);
+});
+
+test('matchesFilterKeywords passes all records when filterKeywords is empty or absent', () => {
+  const record = { title: '任何标题', summary: '任意内容' };
+  assert.equal(matchesFilterKeywords(record, undefined), true);
+  assert.equal(matchesFilterKeywords(record, null), true);
+  assert.equal(matchesFilterKeywords(record, []), true);
+});
+
+test('matchesFilterKeywords matches Chinese keywords in title or summary', () => {
+  const record = { title: 'OpenAI发布最新大模型GPT-5', summary: '这是一条科技新闻' };
+  assert.equal(matchesFilterKeywords(record, ['大模型']), true);
+  assert.equal(matchesFilterKeywords(record, ['人工智能']), false);
+  assert.equal(matchesFilterKeywords(record, ['GPT']), true);
+});
+
+test('matchesFilterKeywords matches English keywords case-insensitively', () => {
+  const record = { title: 'New LLM breakthrough announced', summary: 'A summary about AI' };
+  assert.equal(matchesFilterKeywords(record, ['llm']), true);
+  assert.equal(matchesFilterKeywords(record, ['LLM']), true);
+  assert.equal(matchesFilterKeywords(record, ['ai']), true);
+  assert.equal(matchesFilterKeywords(record, ['blockchain']), false);
+});
+
+test('matchesFilterKeywords passes if any keyword in the list matches', () => {
+  const record = { title: '苹果发布新iPhone', summary: '这是一条普通的消费电子新闻' };
+  assert.equal(matchesFilterKeywords(record, ['AI', '大模型', 'iPhone']), true);
+  assert.equal(matchesFilterKeywords(record, ['AI', '大模型', '深度学习']), false);
+});
+
+test('RSS parser filters items by filterKeywords', async () => {
+  const xml = await readFile(new URL('./fixtures/sample-rss.xml', import.meta.url), 'utf8');
+  const records = parseRssAtomFeed({
+    xml,
+    source: { id: 'src_rss', sourceType: 'rss', feedUrl: 'https://example.com/feed.xml', language: 'en', filterKeywords: ['Agent'] },
+    fetchedAt,
+    responseMeta: { status: 200, feedUrl: 'https://example.com/feed.xml' }
+  });
+  assert.equal(records.length, 1);
+  assert.match(records[0].title, /Agent/);
+});
+
+test('RSS parser excludes items not matching filterKeywords', async () => {
+  const xml = await readFile(new URL('./fixtures/sample-rss.xml', import.meta.url), 'utf8');
+  const records = parseRssAtomFeed({
+    xml,
+    source: { id: 'src_rss', sourceType: 'rss', feedUrl: 'https://example.com/feed.xml', language: 'en', filterKeywords: ['blockchain', 'crypto'] },
+    fetchedAt,
+    responseMeta: { status: 200, feedUrl: 'https://example.com/feed.xml' }
+  });
+  assert.equal(records.length, 0);
 });
