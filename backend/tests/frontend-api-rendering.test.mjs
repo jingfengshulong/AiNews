@@ -263,6 +263,32 @@ test('detail page renders signal detail from /api/signals/:id', async () => {
   assert.match(document.querySelector('[data-detail-list="related"]').textContent, /Benchmarking Tool-Using/);
 });
 
+test('detail page compacts long titles without losing the original title', async () => {
+  const longTitle = 'GitHub - nicobailon/surf-cli: The CLI for AI agents to control Chrome. Zero config, agent-agnostic, battle-tested.';
+  const dom = await renderPage({
+    file: 'details.html',
+    url: 'http://localhost/details.html?id=sig_0001',
+    responses: {
+      '/api/signals/sig_0001': {
+        ...detailResponse,
+        signal: {
+          ...detailResponse.signal,
+          title: longTitle,
+          summary: `${longTitle} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`
+        }
+      }
+    }
+  });
+  const document = dom.window.document;
+  const detailTitle = document.querySelector('.detail-title');
+
+  assert.equal(detailTitle.textContent, 'surf-cli: The CLI for AI agents to control Chrome.');
+  assert.equal(detailTitle.getAttribute('title'), longTitle);
+  assert.equal(detailTitle.classList.contains('is-long-title'), true);
+  assert.doesNotMatch(document.querySelector('.detail-deck').textContent, /GitHub - nicobailon/);
+  assert.match(document.querySelector('.detail-deck').textContent, /目前已保留基础来源信息/);
+});
+
 test('sources, dates, topics, and search pages render API data', async () => {
   const signal = homeResponse.leadSignal;
   const sourceDom = await renderPage({

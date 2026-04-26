@@ -154,8 +154,8 @@
 
     document.title = `${signal.title} | Signal Daily`;
     setDetail("kicker", `# ${signal.id} / HOT SIGNAL`);
-    setDetail("title", signal.title);
-    setDetail("summary", signal.summary || signal.aiBrief);
+    applyDetailTitle(compactHeroTitle(signal.title), { fullTitle: signal.title, sourceLength: signal.title?.length || 0 });
+    setDetail("summary", heroLeadSummary(signal));
     setDetail("body", signal.aiBrief || signal.summary);
     setDetail("source", detail.supportingSources.map((source) => source.name).join(" + "));
     setDetail("date", formatDate(signal.primaryPublishedAt));
@@ -509,7 +509,27 @@
   }
 
   function applyHeroTitle(title, options = {}) {
-    const node = document.querySelector(".hero-title");
+    applyAdaptiveTitle(".hero-title", title, {
+      ...options,
+      longAt: 72,
+      displayLongAt: 56,
+      extraAt: 118,
+      displayExtraAt: 82
+    });
+  }
+
+  function applyDetailTitle(title, options = {}) {
+    applyAdaptiveTitle(".detail-title", title, {
+      ...options,
+      longAt: 88,
+      displayLongAt: 68,
+      extraAt: 132,
+      displayExtraAt: 96
+    });
+  }
+
+  function applyAdaptiveTitle(selector, title, options = {}) {
+    const node = document.querySelector(selector);
     if (!node) {
       return;
     }
@@ -518,10 +538,10 @@
     node.textContent = displayTitle;
     node.removeAttribute("title");
     node.classList.remove("is-long-title", "is-extra-long-title");
-    if (sourceLength > 72 || displayTitle.length > 56) {
+    if (sourceLength > options.longAt || displayTitle.length > options.displayLongAt) {
       node.classList.add("is-long-title");
     }
-    if (sourceLength > 118 || displayTitle.length > 82) {
+    if (sourceLength > options.extraAt || displayTitle.length > options.displayExtraAt) {
       node.classList.add("is-extra-long-title");
     }
     if (options.fullTitle && options.fullTitle !== displayTitle) {

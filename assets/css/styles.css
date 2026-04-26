@@ -197,6 +197,7 @@ input {
   font-weight: 700;
   letter-spacing: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
   text-wrap: balance;
 }
 
@@ -631,9 +632,30 @@ input {
   max-width: 920px;
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(46px, 7.2vw, 96px);
+  font-size: 86px;
   line-height: 0.92;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-wrap: balance;
+}
+
+.detail-title.is-long-title,
+.detail-title.is-extra-long-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.detail-title.is-long-title {
+  font-size: 66px;
+  line-height: 1;
+}
+
+.detail-title.is-extra-long-title {
+  font-size: 54px;
+  line-height: 1.05;
 }
 
 .detail-deck {
@@ -642,6 +664,7 @@ input {
   color: var(--soft);
   font-size: 19px;
   line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 
 .detail-meta {
@@ -857,6 +880,18 @@ input {
     font-size: 48px;
   }
 
+  .detail-title {
+    font-size: 72px;
+  }
+
+  .detail-title.is-long-title {
+    font-size: 56px;
+  }
+
+  .detail-title.is-extra-long-title {
+    font-size: 48px;
+  }
+
   .rank-panel {
     border-left: 0;
     padding-left: 0;
@@ -937,8 +972,20 @@ input {
   }
 
   .detail-title {
-    font-size: 42px;
+    font-size: 40px;
     line-height: 1.04;
+  }
+
+  .detail-title.is-long-title {
+    font-size: 32px;
+    line-height: 1.12;
+    -webkit-line-clamp: 6;
+  }
+
+  .detail-title.is-extra-long-title {
+    font-size: 29px;
+    line-height: 1.12;
+    -webkit-line-clamp: 6;
   }
 
   .detail-deck,
