@@ -264,6 +264,38 @@ test('detail page renders signal detail from /api/signals/:id', async () => {
   assert.match(document.querySelector('[data-detail-list="related"]').textContent, /Benchmarking Tool-Using/);
 });
 
+test('detail page does not repeat the same text in hero summary and AI brief', async () => {
+  const duplicatedBrief = '要点显示：Edgee Team 是一款为团队编码助手提供数据看板和分析的平台；产品通过连接 GitHub，追踪并归因每个开发会话，以量化 AI 辅助编程的效率和成本。后续观察：关注 Edgee Team 发布后的用户反馈、市场接受度以及其后续的功能迭代与团队集成案例。';
+  const dom = await renderPage({
+    file: 'details.html',
+    url: 'http://localhost/details.html?id=sig_0039',
+    responses: {
+      '/api/signals/sig_0039': {
+        ...detailResponse,
+        signal: {
+          ...detailResponse.signal,
+          id: 'sig_0039',
+          title: 'Edgee Team',
+          summary: duplicatedBrief,
+          aiBrief: duplicatedBrief
+        },
+        keyPoints: [
+          { text: 'Edgee Team 是一款为团队编码助手提供数据看板和分析的平台。', sources: [{ name: 'Product Hunt AI Launches' }] },
+          { text: '产品通过连接 GitHub，追踪并归因每个开发会话。', sources: [{ name: 'Product Hunt AI Launches' }] }
+        ],
+        nextWatch: '关注 Edgee Team 发布后的用户反馈。'
+      }
+    }
+  });
+  const document = dom.window.document;
+  const heroSummary = document.querySelector('.detail-deck').textContent;
+  const aiBrief = document.querySelector('[data-detail-field="body"]').textContent;
+
+  assert.equal(aiBrief, duplicatedBrief);
+  assert.equal(heroSummary, 'Edgee Team 是一款为团队编码助手提供数据看板和分析的平台。');
+  assert.notEqual(heroSummary, aiBrief);
+});
+
 test('detail page compacts long titles without losing the original title', async () => {
   const longTitle = 'GitHub - nicobailon/surf-cli: The CLI for AI agents to control Chrome. Zero config, agent-agnostic, battle-tested.';
   const dom = await renderPage({

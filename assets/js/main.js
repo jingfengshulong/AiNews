@@ -164,7 +164,7 @@
     document.title = `${signal.title} | Signal Daily`;
     setDetail("kicker", `# ${signal.id} / HOT SIGNAL`);
     applyDetailTitle(compactHeroTitle(signal.title), { fullTitle: signal.title, sourceLength: signal.title?.length || 0 });
-    setDetail("summary", heroLeadSummary(signal));
+    setDetail("summary", detailLeadSummary(signal, detail));
     setDetail("body", signal.aiBrief || signal.summary);
     setDetail("source", detail.supportingSources.map((source) => source.name).join(" + "));
     setDetail("date", formatDate(signal.primaryPublishedAt));
@@ -801,6 +801,32 @@
       return remainder || compactHeroTitle(fullTitle);
     }
     return summary;
+  }
+
+  function detailLeadSummary(signal, detail) {
+    const heroSummary = heroLeadSummary(signal);
+    const aiBrief = normalizeSpace(signal.aiBrief || signal.summary || "");
+    if (!sameNormalizedText(heroSummary, aiBrief)) {
+      return heroSummary;
+    }
+
+    const primaryPoint = asArray(detail.keyPoints)
+      .map((point) => normalizeSpace(point.text || point))
+      .find(Boolean);
+    if (primaryPoint && !sameNormalizedText(primaryPoint, aiBrief)) {
+      return truncateAtWord(firstSentence(primaryPoint), 118);
+    }
+
+    const nextWatch = normalizeSpace(detail.nextWatch || "");
+    if (nextWatch && !sameNormalizedText(nextWatch, aiBrief)) {
+      return truncateAtWord(`后续观察：${nextWatch}`, 118);
+    }
+
+    return truncateAtWord(firstSentence(aiBrief || heroSummary), 118);
+  }
+
+  function sameNormalizedText(left, right) {
+    return normalizeSpace(left) === normalizeSpace(right);
   }
 
   function firstSentence(value) {
