@@ -356,6 +356,9 @@ export function createNewsServingService({
 
   function userFacingBrief(signal) {
     const brief = cleanText(signal.aiBrief || signal.summary);
+    if (/AI 精炼暂不可用/.test(brief)) {
+      return fallbackDisplayBrief(signal);
+    }
     if (!brief || !/(后端处理流程|后台已保留)/.test(brief)) {
       return brief;
     }
@@ -372,6 +375,15 @@ export function createNewsServingService({
     return repaired || brief
       .replace(/。?这条资讯已经进入后端处理流程[^。]*。?/g, '')
       .replace(/。?后台已保留[^。]*。?/g, '');
+  }
+
+  function fallbackDisplayBrief(signal) {
+    const title = cleanText(signal.title);
+    const sourceText = asArray(signal.keyPoints)
+      .map((point) => stripTerminalPunctuation(typeof point === 'string' ? point : point?.text))
+      .find((text) => text && !/提供了与该信号相关的基础来源信息|提供了该信号的基础来源信息/.test(text));
+    const opening = sourceText || `${title} 已根据来源标题、摘要和发布时间完成基础整理`;
+    return `${stripTerminalPunctuation(opening)}。后续会结合模型精炼、官方更新或更多来源确认继续补充要点。`;
   }
 
   function sourceContextForSignal(signal) {

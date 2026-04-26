@@ -170,6 +170,55 @@ test('enrichment jobs are enqueued for pending signals and persist attributable 
   assert.equal(updated.enrichmentError, undefined);
 });
 
+test('fallback enrichment is only re-enqueued when retrying fallback output is enabled', () => {
+  const runtime = createRuntime();
+  const pending = runtime.signalRepository.createSignal({
+    title: 'Pending signal',
+    primaryPublishedAt: '2026-04-21T08:00:00.000Z',
+    status: 'candidate',
+    enrichmentStatus: 'pending'
+  });
+  const fallback = runtime.signalRepository.createSignal({
+    title: 'Fallback signal',
+    primaryPublishedAt: '2026-04-21T08:00:00.000Z',
+    status: 'candidate',
+    enrichmentStatus: 'fallback'
+  });
+  const failedWithFallback = runtime.signalRepository.createSignal({
+    title: 'Failed validation signal',
+    primaryPublishedAt: '2026-04-21T08:00:00.000Z',
+    status: 'candidate',
+    enrichmentStatus: 'failed',
+    enrichmentMeta: {
+      errorCategory: 'enrichment_validation_failed',
+      fallbackGenerated: true
+    }
+  });
+  const oldFallbackJob = runtime.queue.enqueue('enrichment', { signalId: fallback.id }, {
+    jobKey: `enrichment:${fallback.id}`,
+    runAfter: new Date('2026-04-21T08:00:00.000Z')
+  });
+  runtime.queue.complete(oldFallbackJob.id, { fallback: true });
+
+  const defaultJobs = enqueuePendingEnrichmentJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    now: new Date('2026-04-21T09:00:00.000Z')
+  });
+  const retryJobs = enqueuePendingEnrichmentJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    now: new Date('2026-04-21T10:00:00.000Z'),
+    retryFallback: true
+  });
+
+  assert.deepEqual(defaultJobs.map((job) => job.payload.signalId), [pending.id]);
+  assert.ok(retryJobs.some((job) => job.payload.signalId === fallback.id && job.status === 'queued'));
+  assert.ok(retryJobs.find((job) => job.payload.signalId === fallback.id).jobKey.includes(':fallback-retry:'));
+  assert.ok(retryJobs.some((job) => job.payload.signalId === failedWithFallback.id && job.status === 'queued'));
+  assert.ok(retryJobs.find((job) => job.payload.signalId === failedWithFallback.id).jobKey.includes(':failed-retry:'));
+});
+
 test('enrichment repairs short provider briefs before completing detail output', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {
@@ -214,6 +263,52 @@ test('enrichment repairs short provider briefs before completing detail output',
   assert.match(updated.aiBrief, /OpenAI launches Agent SDK controls/);
   assert.match(updated.aiBrief, /产品更新/);
   assert.doesNotMatch(updated.aiBrief, /后端处理流程|后台已保留/);
+});
+
+test('enrichment repairs missing provider structure before validation', async () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'arXiv AI Recent',
+    sourceType: 'arxiv',
+    family: 'research',
+    trustScore: 0.9,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_repair_structure',
+    sourceId: source.id,
+    title: 'Seeing Fast and Slow: Learning the Flow of Time in Videos',
+    excerpt: 'A paper studies time flow in videos.',
+    textForAI: 'A paper studies how models perceive and control time in videos.',
+    contentHash: '9'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  runtime.queue.enqueue('enrichment', { signalId: signal.id }, { jobKey: `enrichment:${signal.id}` });
+
+  const summary = await processEnrichmentJobs({
+    queue: runtime.queue,
+    handler: createHandler(runtime, {
+      generate: async () => ({
+        aiBrief: '这条信号围绕模型如何理解视频中的时间流动展开，来源摘要显示研究关注快放慢放识别、生成速度控制和视频时序建模。它对视频生成、编辑工具和评测方法都有参考价值，后续需要观察论文复现、开源代码和社区实验反馈。',
+        keyPoints: [],
+        timeline: [],
+        sourceMix: [],
+        nextWatch: 'watch replication and code release',
+        relatedSignalIds: []
+      })
+    })
+  });
+  const updated = runtime.signalRepository.getSignal(signal.id);
+
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.failed, 0);
+  assert.equal(updated.enrichmentStatus, 'completed');
+  assert.ok(updated.keyPoints.length >= 1);
+  assert.equal(updated.sourceMix[0].sourceId, source.id);
+  assert.match(updated.nextWatch, /继续关注/);
 });
 
 test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {
@@ -342,6 +437,7 @@ test('enrichment falls back safely when provider is unavailable', async () => {
   assert.equal(updated.enrichmentStatus, 'fallback');
   assert.equal(updated.enrichmentMeta.errorCategory, 'provider_unavailable');
   assert.match(updated.aiBrief, /基础来源信息/);
+  assert.doesNotMatch(updated.aiBrief, /AI 精炼暂不可用/);
   assert.ok(chineseCharCount(updated.aiBrief) >= 100);
   assert.equal(updated.sourceMix[0].sourceId, source.id);
   assert.doesNotMatch(updated.aiBrief, /backend-only sentence/);

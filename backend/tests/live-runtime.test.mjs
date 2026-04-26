@@ -267,6 +267,50 @@ test('live runtime passes abort signals to source fetches for request timeout co
   assert.equal(report.totals.processed, 1);
 });
 
+test('live runtime retries fallback enrichment after an AI provider becomes available', async () => {
+  const seedSources = createSeedSources([
+    {
+      name: 'OpenAI Live RSS',
+      sourceType: 'rss',
+      family: 'company_announcement',
+      feedUrl: 'https://example.com/openai.xml',
+      trustScore: 0.95
+    }
+  ]);
+  let fallbackOnly = true;
+  const mutableProvider = {
+    name: 'mutable-live-enrichment',
+    get fallbackOnly() {
+      return fallbackOnly;
+    },
+    async generate(context) {
+      return enrichmentProvider.generate(context);
+    }
+  };
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: { fetchSource: async (sourceRecord) => [adapterRecord(sourceRecord)] }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider: mutableProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  await runtime.runOnce({ maxItemsPerSource: 1 });
+  const fallbackSignal = runtime.signalRepository.listSignals()[0];
+  assert.equal(fallbackSignal.enrichmentStatus, 'fallback');
+
+  fallbackOnly = false;
+  const report = await runtime.runOnce({ maxItemsPerSource: 1 });
+  const completedSignal = runtime.signalRepository.getSignal(fallbackSignal.id);
+
+  assert.equal(report.pipeline.enrichment.completed, 1);
+  assert.equal(completedSignal.enrichmentStatus, 'completed');
+  assert.equal(completedSignal.enrichmentMeta.provider, 'mutable-live-enrichment');
+});
+
 test('live runtime enables configured live API sources and public research fallbacks', async () => {
   const runtime = await createLiveRuntime({
     config: loadConfig({

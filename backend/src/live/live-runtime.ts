@@ -290,7 +290,8 @@ async function runLiveOnce({
   enqueuePendingEnrichmentJobs({
     signalRepository,
     queue,
-    now: startedAtDate
+    now: startedAtDate,
+    retryFallback: canGenerateAiEnrichment(enrichmentProvider)
   });
   const enrichmentSummary = await processEnrichmentJobs({
     queue,
@@ -446,6 +447,10 @@ function createLiveEnrichmentProvider({ config = {}, fetchImpl = globalThis.fetc
     });
   }
   return createMetadataEnrichmentProvider();
+}
+
+function canGenerateAiEnrichment(provider) {
+  return Boolean(provider?.generate && !provider.fallbackOnly);
 }
 
 function createMetadataEnrichmentProvider() {

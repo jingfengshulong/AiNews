@@ -506,6 +506,58 @@ test('GET /api/signals/:id cleans stale community topics and internal repair tex
   });
 });
 
+test('GET /api/signals/:id hides stale AI unavailable fallback copy', async () => {
+  const runtime = createRuntime();
+  const research = createSource(runtime.sourceService, {
+    name: 'arXiv AI Recent',
+    sourceType: 'arxiv',
+    family: 'research',
+    trustScore: 0.9
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_time_video',
+    sourceId: research.id,
+    title: 'Seeing Fast and Slow: Learning the Flow of Time in Videos',
+    excerpt: 'A paper studies how models perceive and control time in videos.',
+    publishedAt: '2026-04-23T17:59:57.000Z',
+    textForAI: 'A paper studies how models perceive and control time in videos.',
+    contentHash: '7'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    summary: `${article.title} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`,
+    primaryPublishedAt: article.publishedAt,
+    heatScore: 45,
+    signalScore: 71,
+    enrichmentStatus: 'fallback',
+    aiBrief: `${article.title} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`,
+    keyPoints: [{ text: 'arXiv AI Recent 提供了与该信号相关的基础来源信息。', sourceIds: [research.id] }],
+    sourceMix: [{ sourceId: research.id, sourceName: research.name, role: 'research' }],
+    nextWatch: '继续关注官方更新、独立报道和更多来源确认。',
+    articles: [article],
+    topics: [{ slug: 'research', confidence: 0.88 }]
+  });
+  const servingService = createNewsServingService({
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicRepository: runtime.topicRepository,
+    scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: { mode: 'demo', stale: false, sourceOutcomeCounts: {} },
+    now: () => new Date('2026-04-23T18:30:00.000Z')
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const { response, body } = await getJson(baseUrl, `/api/signals/${signal.id}`);
+
+    assert.equal(response.status, 200);
+    assert.match(body.signal.summary, /来源标题、摘要和发布时间/);
+    assert.match(body.signal.summary, /Seeing Fast and Slow/);
+    assert.doesNotMatch(body.signal.summary, /AI 精炼暂不可用/);
+    assert.doesNotMatch(body.signal.aiBrief, /AI 精炼暂不可用/);
+  });
+});
+
 test('GET /api/signals/:id returns not found for missing or hidden signals', async () => {
   const { servingService, runtime } = seedServingFixture();
   const hidden = runtime.signalRepository.listSignals().find((signal) => signal.status === 'hidden');

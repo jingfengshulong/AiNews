@@ -8,13 +8,30 @@ export class EnrichmentJobError extends Error {
   }
 }
 
-export function enqueuePendingEnrichmentJobs({ signalRepository, queue, now = new Date() }) {
+export function enqueuePendingEnrichmentJobs({ signalRepository, queue, now = new Date(), retryFallback = false }) {
+  const runAt = new Date(now);
   return signalRepository.listSignals()
-    .filter((signal) => signal.enrichmentStatus === 'pending')
+    .filter((signal) => signal.enrichmentStatus === 'pending' || (retryFallback && isRetryableFallbackSignal(signal)))
     .map((signal) => queue.enqueue('enrichment', { signalId: signal.id }, {
-      jobKey: `enrichment:${signal.id}`,
-      runAfter: now
+      jobKey: enrichmentJobKey(signal, { retryFallback, now: runAt }),
+      runAfter: runAt
     }));
+}
+
+function enrichmentJobKey(signal, { retryFallback, now }) {
+  if (retryFallback && isRetryableFallbackSignal(signal)) {
+    return `enrichment:${signal.id}:${signal.enrichmentStatus}-retry:${now.toISOString()}`;
+  }
+  return `enrichment:${signal.id}`;
+}
+
+function isRetryableFallbackSignal(signal) {
+  if (signal.enrichmentStatus === 'fallback') {
+    return true;
+  }
+  return signal.enrichmentStatus === 'failed'
+    && signal.enrichmentMeta?.fallbackGenerated === true
+    && signal.enrichmentMeta?.errorCategory === 'enrichment_validation_failed';
 }
 
 export function createEnrichmentJobHandler({ signalRepository, articleRepository, sourceService, provider }) {
@@ -169,7 +186,7 @@ export function createFallbackEnrichmentOutput(context) {
   }));
 
   return {
-    aiBrief: buildSubstantiveBrief('目前已保留基础来源信息，AI 精炼暂不可用。', context),
+    aiBrief: buildSubstantiveBrief('目前已保留基础来源信息，已根据来源标题、摘要和发布时间完成基础整理。', context),
     keyPoints: keyPoints.length ? keyPoints : sources.slice(0, 3).map((source) => ({
       text: `${source.name} 提供了该信号的基础来源信息。`,
       sourceIds: [source.id]
@@ -188,13 +205,50 @@ export function createFallbackEnrichmentOutput(context) {
 }
 
 function ensureSubstantiveEnrichmentOutput(output, context) {
+  const fallback = createFallbackEnrichmentOutput(context);
+  const repaired = {
+    ...output,
+    keyPoints: validKeyPoints(output?.keyPoints, context) ? output.keyPoints : fallback.keyPoints,
+    timeline: validTimeline(output?.timeline, context) ? output.timeline : fallback.timeline,
+    sourceMix: validSourceMix(output?.sourceMix, context) ? output.sourceMix : fallback.sourceMix,
+    nextWatch: hasCjk(output?.nextWatch) ? output.nextWatch : fallback.nextWatch,
+    relatedSignalIds: asArray(output?.relatedSignalIds)
+  };
   if (chineseCharCount(output?.aiBrief) >= 100) {
-    return output;
+    return repaired;
   }
   return {
-    ...output,
-    aiBrief: buildSubstantiveBrief(output?.aiBrief, context, output)
+    ...repaired,
+    aiBrief: buildSubstantiveBrief(output?.aiBrief, context, repaired)
   };
+}
+
+function validKeyPoints(value, context) {
+  const points = asArray(value);
+  return points.length >= 1 && points.length <= 6 && points.every((point) => {
+    const text = typeof point === 'string' ? point : point?.text;
+    return hasCjk(text) && validSourceIds(point?.sourceIds, context);
+  });
+}
+
+function validTimeline(value, context) {
+  const items = asArray(value);
+  return items.length <= 8 && items.every((item) => {
+    const label = typeof item === 'string' ? item : item?.label;
+    return hasCjk(label) && validSourceIds(item?.sourceIds, context);
+  });
+}
+
+function validSourceMix(value, context) {
+  const sourceIds = new Set(asArray(context.sources).map((source) => source.id));
+  const items = asArray(value);
+  return items.length > 0 && items.every((item) => sourceIds.has(item?.sourceId));
+}
+
+function validSourceIds(value, context) {
+  const sourceIds = new Set(asArray(context.sources).map((source) => source.id));
+  const ids = asArray(value).filter(Boolean);
+  return ids.length > 0 && ids.every((sourceId) => sourceIds.has(sourceId));
 }
 
 function buildSubstantiveBrief(seed, context, output = {}) {
@@ -295,6 +349,10 @@ function clipToVisibleLength(value, maxLength) {
 
 function chineseCharCount(value) {
   return Array.from(String(value || '')).filter((char) => /[\u4e00-\u9fff]/.test(char)).length;
+}
+
+function hasCjk(value) {
+  return chineseCharCount(value) > 0;
 }
 
 function asArray(value) {
