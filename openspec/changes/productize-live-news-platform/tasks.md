@@ -35,6 +35,6 @@
 
 ## 6. Verification And Version Management
 
-- [ ] 6.1 Run backend tests and OpenSpec strict validation
-- [ ] 6.2 Run a real bounded live refresh, restart the live server, and verify persisted data remains visible
-- [ ] 6.3 Commit implementation in coherent stage-based commits and leave the change ready for archive
+- [x] 6.1 Run backend tests and OpenSpec strict validation
+- [x] 6.2 Run a real bounded live refresh, restart the live server, and verify persisted data remains visible
+- [x] 6.3 Commit implementation in coherent stage-based commits and leave the change ready for archive
