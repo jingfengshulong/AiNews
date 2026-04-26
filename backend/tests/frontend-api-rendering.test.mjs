@@ -146,6 +146,32 @@ test('homepage renders lead, ranking, stats, archives, and ticker from /api/home
   assert.match(document.querySelector('.footer-note').textContent, /3 sources/);
 });
 
+test('homepage compacts long live lead titles for the hero layout', async () => {
+  const longTitle = 'GitHub - nicobailon/surf-cli: The CLI for AI agents to control Chrome. Zero config, agent-agnostic, battle-tested.';
+  const dom = await renderPage({
+    file: 'index.html',
+    url: 'http://localhost/index.html',
+    responses: {
+      '/api/home': {
+        ...homeResponse,
+        leadSignal: {
+          ...homeResponse.leadSignal,
+          title: longTitle,
+          summary: `${longTitle} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`
+        }
+      }
+    }
+  });
+  const document = dom.window.document;
+  const heroTitle = document.querySelector('.hero-title');
+
+  assert.equal(heroTitle.textContent, 'surf-cli: The CLI for AI agents to control Chrome.');
+  assert.equal(heroTitle.getAttribute('title'), longTitle);
+  assert.equal(heroTitle.classList.contains('is-long-title'), true);
+  assert.doesNotMatch(document.querySelector('.hero-summary').textContent, /GitHub - nicobailon/);
+  assert.match(document.querySelector('.hero-summary').textContent, /目前已保留基础来源信息/);
+});
+
 test('homepage renders stale and fixture data status from /api/home metadata', async () => {
   const staleDom = await renderPage({
     file: 'index.html',

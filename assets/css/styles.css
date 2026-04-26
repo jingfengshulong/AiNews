@@ -155,7 +155,7 @@ input {
 }
 
 .hero-main {
-  min-height: 520px;
+  min-height: 500px;
   display: grid;
   align-content: end;
   padding-right: 18px;
@@ -189,13 +189,33 @@ input {
 }
 
 .hero-title {
-  max-width: 760px;
+  max-width: min(820px, 100%);
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(54px, 8vw, 112px);
-  line-height: 0.88;
+  font-size: 88px;
+  line-height: 0.92;
   font-weight: 700;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.hero-title.is-long-title,
+.hero-title.is-extra-long-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.hero-title.is-long-title {
+  font-size: 68px;
+  line-height: 0.98;
+}
+
+.hero-title.is-extra-long-title {
+  font-size: 56px;
+  line-height: 1.02;
 }
 
 .hero-summary {
@@ -331,11 +351,16 @@ input {
 .topic-row h3 {
   margin: 0;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .ranking-item h2,
 .ranking-item h3 {
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 20px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .ranking-item p,
@@ -348,6 +373,14 @@ input {
   color: var(--muted);
   line-height: 1.65;
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ranking-item p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .signal-strip {
@@ -812,6 +845,18 @@ input {
     padding-right: 0;
   }
 
+  .hero-title {
+    font-size: 72px;
+  }
+
+  .hero-title.is-long-title {
+    font-size: 56px;
+  }
+
+  .hero-title.is-extra-long-title {
+    font-size: 48px;
+  }
+
   .rank-panel {
     border-left: 0;
     padding-left: 0;
@@ -853,6 +898,16 @@ input {
   .hero-title {
     font-size: 44px;
     line-height: 1.04;
+  }
+
+  .hero-title.is-long-title {
+    font-size: 38px;
+    line-height: 1.08;
+  }
+
+  .hero-title.is-extra-long-title {
+    font-size: 34px;
+    line-height: 1.12;
   }
 
   .hero-summary {

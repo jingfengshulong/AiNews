@@ -62,8 +62,8 @@
     }
 
     const lead = home.leadSignal;
-    setText(".hero-title", lead.title);
-    setText(".hero-summary", lead.summary || lead.aiBrief);
+    applyHeroTitle(compactHeroTitle(lead.title), { fullTitle: lead.title, sourceLength: lead.title?.length || 0 });
+    setText(".hero-summary", heroLeadSummary(lead));
     setText(".system-label", `#01 / BACKEND SIGNAL / ${formatDate(lead.primaryPublishedAt)}`);
     const heroLink = document.querySelector(".hero-link");
     if (heroLink) {
@@ -362,7 +362,7 @@
   function renderHomeState(home = {}, state = "empty_live") {
     const copy = stateCopy(state);
     setText(".system-label", copy.kicker);
-    setText(".hero-title", copy.title);
+    applyHeroTitle(copy.title);
     setText(".hero-summary", copy.summary);
     const heroLink = document.querySelector(".hero-link");
     if (heroLink) {
@@ -506,6 +506,76 @@
 
   function detailHref(id) {
     return `details.html?id=${encodeURIComponent(id)}`;
+  }
+
+  function applyHeroTitle(title, options = {}) {
+    const node = document.querySelector(".hero-title");
+    if (!node) {
+      return;
+    }
+    const displayTitle = String(title || "");
+    const sourceLength = Number(options.sourceLength || displayTitle.length);
+    node.textContent = displayTitle;
+    node.removeAttribute("title");
+    node.classList.remove("is-long-title", "is-extra-long-title");
+    if (sourceLength > 72 || displayTitle.length > 56) {
+      node.classList.add("is-long-title");
+    }
+    if (sourceLength > 118 || displayTitle.length > 82) {
+      node.classList.add("is-extra-long-title");
+    }
+    if (options.fullTitle && options.fullTitle !== displayTitle) {
+      node.setAttribute("title", options.fullTitle);
+    }
+  }
+
+  function compactHeroTitle(title) {
+    const normalized = normalizeSpace(title);
+    if (!normalized) {
+      return "";
+    }
+
+    const githubMatch = normalized.match(/^GitHub\s*-\s*([^:]+):\s*(.+)$/i);
+    if (githubMatch) {
+      const repoName = githubMatch[1].split("/").filter(Boolean).pop() || githubMatch[1];
+      return truncateAtWord(`${repoName}: ${firstSentence(githubMatch[2])}`, 76);
+    }
+
+    return truncateAtWord(normalized, 96);
+  }
+
+  function heroLeadSummary(signal) {
+    const summary = normalizeSpace(signal.summary || signal.aiBrief || "");
+    const fullTitle = normalizeSpace(signal.title || "");
+    if (!summary) {
+      return compactHeroTitle(fullTitle);
+    }
+    if (fullTitle && summary.toLowerCase().startsWith(fullTitle.toLowerCase())) {
+      const remainder = summary.slice(fullTitle.length).replace(/^[\s:：,，。;；.-]+/, "");
+      return remainder || compactHeroTitle(fullTitle);
+    }
+    return summary;
+  }
+
+  function firstSentence(value) {
+    const text = normalizeSpace(value);
+    const match = text.match(/^(.+?[.!?。！？])(?:\s|$)/);
+    return match ? match[1] : text;
+  }
+
+  function truncateAtWord(value, maxLength) {
+    const text = normalizeSpace(value);
+    if (text.length <= maxLength) {
+      return text;
+    }
+    const slice = text.slice(0, maxLength + 1);
+    const wordBreak = slice.lastIndexOf(" ");
+    const end = wordBreak > maxLength * 0.62 ? wordBreak : maxLength;
+    return `${slice.slice(0, end).replace(/[\s,;:，。；：.-]+$/, "")}...`;
+  }
+
+  function normalizeSpace(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
   }
 
   function sourceLine(signal) {
