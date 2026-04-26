@@ -526,9 +526,10 @@ test('GET /api/search searches text and applies topic, source family, and date f
     assert.equal(keyword.response.status, 200);
     assert.equal(keyword.body.query.q, 'enterprise Agent');
     assert.ok(keyword.body.results.some((result) => result.type === 'signal' && result.title.includes('Agent SDK')));
-    assert.ok(keyword.body.results.some((result) => result.type === 'article' && result.title.includes('enterprise')));
+    assert.ok(keyword.body.results.every((result) => result.type === 'signal'));
     assert.equal(filtered.response.status, 200);
     assert.ok(filtered.body.results.length > 0);
+    assert.ok(filtered.body.results.every((result) => result.type === 'signal'));
     assert.ok(filtered.body.results.every((result) => result.sourceFamilies.includes('research')));
     assert.ok(filtered.body.results.every((result) => result.primaryPublishedAt.startsWith('2026-04-20')));
   });

@@ -28,7 +28,7 @@
       <div>
         <div class="page-kicker">SECONDARY SEARCH</div>
         <h1 class="page-title">搜索 AI 资讯信号</h1>
-        <p class="page-intro">搜索被放在独立页面，作为深入探索工具。当前原型只演示界面状态，不连接真实数据。</p>
+        <p class="page-intro">跨来源索引已接入实时后端，用于追踪模型、产品、研究与社区信号。</p>
       </div>
       <div class="page-stat">
         <strong>318</strong>
@@ -38,7 +38,7 @@
 
     <section class="search-workbench">
       <div class="search-line">
-        <input id="searchInput" type="search" value="AI Agent 企业采购" aria-label="搜索关键词">
+        <input id="searchInput" type="search" placeholder="输入关键词搜索已处理资讯" aria-label="搜索关键词">
         <button id="searchButton" type="button">搜索</button>
       </div>
       <div class="chips" aria-label="筛选条件">
@@ -47,11 +47,18 @@
         <span class="chip">媒体 + 论文</span>
         <span class="chip">中文摘要</span>
       </div>
-      <p class="search-status" id="searchStatus">静态示例结果已准备好。</p>
-      <div class="result-list">
+      <p class="search-status" id="searchStatus">准备搜索后端处理后的资讯信号。</p>
+      <div class="result-list is-empty">
+        <div class="state-panel">
+          <span class="state-kicker">SEARCH READY</span>
+          <h2>等待搜索关键词</h2>
+          <p>处理后的资讯信号会在这里出现。</p>
+        </div>
+        <!--
         <a class="result-row" href="details.html?id=agent-enterprise"><div><h3>AI Agent 企业落地进入加速周</h3><p>多条采购、融资与产品发布信号同时出现。</p><span class="meta"><span>科技媒体</span><span>12 sources</span><span>04.20</span></span></div><span class="heat-value">98°</span></a>
         <a class="result-row" href="details.html?id=procurement-keywords"><div><h3>流程自动化成为企业 AI 预算新入口</h3><p>从模型订阅转向系统集成，采购语言正在变化。</p><span class="meta"><span>投融资</span><span>6 sources</span><span>04.20</span></span></div><span class="heat-value">91°</span></a>
         <a class="result-row" href="details.html?id=connectors-permissions"><div><h3>连接器和权限控制成为 Agent 平台重点</h3><p>产品能力从演示转向实际部署所需的治理模块。</p><span class="meta"><span>产品发布</span><span>9 sources</span><span>04.19</span></span></div><span class="heat-value">87°</span></a>
+        -->
       </div>
     </section>
   </main>

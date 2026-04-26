@@ -260,6 +260,7 @@ test('detail page renders signal detail from /api/signals/:id', async () => {
   assert.match(document.querySelector('[data-detail-list="points"]').textContent, /官方来源确认/);
   assert.match(document.querySelector('[data-detail-list="timeline"]').textContent, /官方发布更新/);
   assert.match(document.querySelector('[data-detail-list="sourceMix"]').textContent, /OpenAI News RSS/);
+  assert.equal(document.querySelector('[data-detail-list="originalLinks"] a').getAttribute('href'), 'https://openai.example/news/agent-sdk-enterprise');
   assert.match(document.querySelector('[data-detail-list="related"]').textContent, /Benchmarking Tool-Using/);
 });
 
@@ -340,9 +341,17 @@ test('sources, dates, topics, and search pages render API data', async () => {
   assert.match(topicsDom.window.document.querySelector('.topic-list').textContent, /OpenAI introduces Agent SDK/);
   assert.doesNotMatch(topicsDom.window.document.querySelector('.topic-list').textContent, /企业流程自动化/);
 
-  const searchDom = await renderPage({
+  const idleSearchDom = await renderPage({
     file: 'search.html',
     url: 'http://localhost/search.html',
+    responses: {}
+  });
+  assert.equal(idleSearchDom.window.document.querySelector('#searchInput').value, '');
+  assert.match(idleSearchDom.window.document.querySelector('.result-list').textContent, /等待搜索关键词/);
+
+  const searchDom = await renderPage({
+    file: 'search.html',
+    url: 'http://localhost/search.html?q=AI%20Agent',
     responses: {
       '/api/search': {
         query: { q: 'AI Agent 企业采购' },
@@ -361,6 +370,30 @@ test('sources, dates, topics, and search pages render API data', async () => {
       }
     }
   });
-  assert.match(searchDom.window.document.querySelector('.result-list').textContent, /NewsAPI article confirms/);
+  assert.match(searchDom.window.document.querySelector('.result-list').textContent, /OpenAI introduces Agent SDK/);
+  assert.doesNotMatch(searchDom.window.document.querySelector('.result-list').textContent, /NewsAPI article confirms/);
+  assert.equal(searchDom.window.document.querySelector('.result-row').getAttribute('href'), 'details.html?id=sig_0001');
   assert.doesNotMatch(searchDom.window.document.querySelector('.result-list').textContent, /流程自动化成为企业 AI 预算/);
+});
+
+test('search page runs backend search from the Enter key', async () => {
+  const dom = await renderPage({
+    file: 'search.html',
+    url: 'http://localhost/search.html',
+    responses: {
+      '/api/search': {
+        query: { q: 'Agent SDK' },
+        results: [{ type: 'signal', ...homeResponse.leadSignal }]
+      }
+    }
+  });
+  const document = dom.window.document;
+  const input = document.querySelector('#searchInput');
+
+  input.value = 'Agent SDK';
+  input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.match(document.querySelector('.result-list').textContent, /OpenAI introduces Agent SDK/);
+  assert.match(document.querySelector('#searchStatus').textContent, /1 条处理后资讯/);
 });

@@ -187,6 +187,19 @@
         <span class="source-weight">${escapeHtml(item.role)}</span>
       </div>
     `);
+    renderList("[data-detail-list='originalLinks']", originalLinks(detail), (item) => `
+      <a class="original-link-row" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title || item.url)}">
+        <span>${escapeHtml(item.displayTitle)}</span>
+        <span class="source-weight">OPEN</span>
+      </a>
+    `, {
+      emptyHtml: `
+        <div class="original-link-row is-empty">
+          <span>暂无可公开打开的原文链接</span>
+          <span class="source-weight">SOURCE</span>
+        </div>
+      `
+    });
     renderList("[data-detail-list='related']", detail.relatedSignals, (item, index) => `
       <a class="related-row" href="${detailHref(item.id)}">
         <span>${escapeHtml(item.title)}</span>
@@ -281,25 +294,49 @@
       return;
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const initialQuery = params.get("q") || "";
+    if (initialQuery) {
+      searchInput.value = initialQuery;
+    }
+
+    const renderSearchIdle = () => {
+      searchStatus.textContent = "准备搜索后端处理后的资讯信号。";
+      resultList.classList.add("is-empty");
+      resultList.innerHTML = statePanel({
+        title: "等待搜索关键词",
+        summary: "处理后的资讯信号会在这里出现。"
+      }, { label: "SEARCH READY", sourceOutcomeCounts: {} });
+    };
+
     const runSearch = async () => {
-      const term = searchInput.value.trim() || "AI Agent";
+      const term = searchInput.value.trim();
+      if (!term) {
+        renderSearchIdle();
+        return;
+      }
       searchStatus.textContent = `正在搜索「${term}」...`;
       const data = await fetchApi(`/api/search?q=${encodeURIComponent(term)}`);
-      searchStatus.textContent = `已从后端 API 返回 ${data.results.length} 条结果`;
-      resultList.innerHTML = data.results.slice(0, 8).map((item) => `
-        <a class="result-row" href="${item.type === "signal" ? detailHref(item.id) : item.originalUrl}">
+      const results = asArray(data.results).filter((item) => item.type === "signal");
+      searchStatus.textContent = `已从后端 API 返回 ${results.length} 条处理后资讯`;
+      resultList.classList.toggle("is-empty", results.length === 0);
+      resultList.innerHTML = results.length ? results.slice(0, 8).map((item) => `
+        <a class="result-row" href="${detailHref(item.id)}">
           <div>
             <h3>${escapeHtml(item.title)}</h3>
-            <p>${escapeHtml(item.summary || item.excerpt || sourceLine(item))}</p>
+            <p>${escapeHtml(item.summary || sourceLine(item))}</p>
             <span class="meta">
-              <span>${escapeHtml(item.type)}</span>
+              <span>signal</span>
               <span>${escapeHtml(item.sourceFamilies?.join(" / ") || "")}</span>
               <span>${escapeHtml(formatDate(item.primaryPublishedAt))}</span>
             </span>
           </div>
-          <span class="heat-value">${item.heatScore !== undefined ? formatScore(item.heatScore) : "LINK"}</span>
+          <span class="heat-value">${formatScore(item.heatScore)}</span>
         </a>
-      `).join("");
+      `).join("") : statePanel({
+        title: "没有找到匹配资讯",
+        summary: `当前关键词「${term}」没有命中已处理资讯信号。`
+      }, { label: "NO RESULTS", sourceOutcomeCounts: {} });
     };
 
     searchButton.addEventListener("click", () => {
@@ -307,7 +344,20 @@
         searchStatus.textContent = `搜索失败：${error.message}`;
       });
     });
-    await runSearch();
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runSearch().catch((error) => {
+          searchStatus.textContent = `搜索失败：${error.message}`;
+        });
+      }
+    });
+
+    if (initialQuery) {
+      await runSearch();
+    } else {
+      renderSearchIdle();
+    }
   }
 
   async function fetchApi(path) {
@@ -351,12 +401,13 @@
     }
   }
 
-  function renderList(selector, items, renderer) {
+  function renderList(selector, items, renderer, options = {}) {
     const root = document.querySelector(selector);
     if (!root) {
       return;
     }
-    root.innerHTML = (items || []).map(renderer).join("");
+    const list = items || [];
+    root.innerHTML = list.length ? list.map(renderer).join("") : (options.emptyHtml || "");
   }
 
   function renderHomeState(home = {}, state = "empty_live") {
@@ -596,6 +647,34 @@
 
   function normalizeSpace(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function originalLinks(detail) {
+    const links = asArray(detail?.attribution?.originalLinks)
+      .map((item) => ({
+        title: item.title,
+        url: item.url,
+        displayTitle: compactHeroTitle(item.title || item.url)
+      }))
+      .concat(asArray(detail?.supportingArticles).map((item) => ({
+        title: item.title,
+        url: item.originalUrl,
+        displayTitle: compactHeroTitle(item.title || item.originalUrl)
+      })))
+      .filter((item) => item.url);
+    return uniqueBy(links, (item) => item.url);
+  }
+
+  function uniqueBy(items, keyFn) {
+    const seen = new Set();
+    return items.filter((item) => {
+      const key = keyFn(item);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
   }
 
   function sourceLine(signal) {

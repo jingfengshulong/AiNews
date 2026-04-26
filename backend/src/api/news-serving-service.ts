@@ -213,26 +213,12 @@ export function createNewsServingService({
     search({ q = '', topic, sourceFamily, from, to } = {}) {
       const query = cleanText(q);
       const range = from || to ? dateRange({ from, to, now: now() }) : undefined;
-      const signalResults = rankedVisibleSignals()
+      const results = rankedVisibleSignals()
         .filter((signal) => matchesSignalFilters(signal, { query, topic, sourceFamily, range }))
         .map((signal) => ({
           type: 'signal',
           relevance: relevanceForSignal(signal, query),
           ...signalSummary(signal)
-        }));
-      const articleResults = articleRepository.listArticles()
-        .filter((article) => matchesArticleFilters(article, { query, topic, sourceFamily, range }))
-        .map((article) => ({
-          type: 'article',
-          relevance: relevanceForArticle(article, query),
-          id: article.id,
-          title: article.title,
-          excerpt: article.excerpt,
-          primaryPublishedAt: article.publishedAt,
-          sourceFamilies: [safeSource(article.sourceId)?.family].filter(Boolean),
-          sources: [sourceRef(safeSource(article.sourceId), [article])].filter(Boolean),
-          topics: articleTopics(article.id),
-          originalUrl: article.canonicalUrl
         }));
 
       return {
@@ -243,7 +229,7 @@ export function createNewsServingService({
           from,
           to
         },
-        results: [...signalResults, ...articleResults]
+        results: results
           .filter((result) => !query || result.relevance > 0)
           .sort((a, b) => b.relevance - a.relevance || comparePublishedDesc(a, b))
       };

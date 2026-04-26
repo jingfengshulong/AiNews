@@ -763,12 +763,14 @@ input {
 
 .timeline-list,
 .source-mix,
+.original-link-list,
 .related-list {
   border-top: 1px solid var(--line);
 }
 
 .timeline-row,
 .source-mix-row,
+.original-link-row,
 .related-row {
   display: grid;
   gap: 12px;
@@ -782,6 +784,7 @@ input {
 }
 
 .source-mix-row,
+.original-link-row,
 .related-row {
   grid-template-columns: 1fr auto;
   align-items: center;
@@ -804,6 +807,26 @@ input {
 
 .related-row:hover {
   color: var(--cyan);
+}
+
+.original-link-row {
+  color: var(--soft);
+}
+
+.original-link-row span:first-child {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.original-link-row:hover {
+  color: var(--cyan);
+}
+
+.original-link-row.is-empty {
+  color: var(--muted);
 }
 
 .reduce-motion *,
@@ -995,6 +1018,7 @@ input {
 
   .timeline-row,
   .source-mix-row,
+  .original-link-row,
   .related-row {
     grid-template-columns: 1fr;
   }
