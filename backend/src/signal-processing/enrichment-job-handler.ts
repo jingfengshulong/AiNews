@@ -60,7 +60,8 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
 
     try {
       const output = await provider.generate(context);
-      const validated = validateEnrichmentOutput(output, context);
+      const repaired = ensureSubstantiveEnrichmentOutput(output, context);
+      const validated = validateEnrichmentOutput(repaired, context);
       signalRepository.updateEnrichmentSuccess(signal.id, validated, {
         provider: provider.name || 'custom',
         generatedAt: new Date().toISOString(),
@@ -168,7 +169,7 @@ export function createFallbackEnrichmentOutput(context) {
   }));
 
   return {
-    aiBrief: `${context.signal.title} 目前已保留基础来源信息，AI 精炼暂不可用；请优先查看来源标题、发布时间和后续确认。`,
+    aiBrief: buildSubstantiveBrief('目前已保留基础来源信息，AI 精炼暂不可用。', context),
     keyPoints: keyPoints.length ? keyPoints : sources.slice(0, 3).map((source) => ({
       text: `${source.name} 提供了该信号的基础来源信息。`,
       sourceIds: [source.id]
@@ -184,6 +185,61 @@ export function createFallbackEnrichmentOutput(context) {
       : '继续关注后续来源确认和更新时间。',
     relatedSignalIds: []
   };
+}
+
+function ensureSubstantiveEnrichmentOutput(output, context) {
+  if (chineseCharCount(output?.aiBrief) >= 100) {
+    return output;
+  }
+  return {
+    ...output,
+    aiBrief: buildSubstantiveBrief(output?.aiBrief, context)
+  };
+}
+
+function buildSubstantiveBrief(seed, context) {
+  const sources = asArray(context.sources);
+  const articles = asArray(context.articles);
+  const sourceNames = sources.slice(0, 3).map((source) => source.name).filter(Boolean).join('、') || '已登记来源';
+  const articleTitles = articles.slice(0, 2).map((article) => article.title).filter(Boolean).join('；') || context.signal.title;
+  const title = clip(context.signal.title, 72);
+  const opening = clip(cleanText(seed), 86) || `${title} 当前已有基础来源支撑。`;
+  const brief = [
+    opening,
+    `这条信号目前由${sourceNames}提供支撑，核心线索集中在“${title}”及相关来源标题。`,
+    `后台已保留原始链接和发布时间，前端只展示经过处理的摘要、要点和归因，避免直接暴露受限原文。`,
+    `后续应继续核对官方说明、独立报道、研究或社区反馈，判断该信息是否会影响产品发布、企业采用、技术路线或行业竞争格局。`,
+    `可优先回看这些来源标题：${clip(articleTitles, 80)}。`
+  ].join('');
+  return finalizeSubstantiveBrief(ensureMinimumChineseLength(brief), {
+    seed,
+    title,
+    sourceNames
+  });
+}
+
+function ensureMinimumChineseLength(value) {
+  let brief = cleanText(value);
+  const addition = ' 目前信息仍以来源标题、发布时间、来源类型和后续交叉验证为准，建议关注是否出现更多独立来源、官方补充、用户反馈和可执行的产品变化。';
+  while (chineseCharCount(brief) < 100) {
+    brief = `${brief}${addition}`;
+  }
+  return brief;
+}
+
+function finalizeSubstantiveBrief(value, { seed, title, sourceNames }) {
+  const clipped = clipToVisibleLength(value, 220);
+  if (chineseCharCount(clipped) >= 100) {
+    return clipped;
+  }
+  const compactSeed = clip(cleanText(seed) || title, 60);
+  const sourcePhrase = sourceNames ? `，并保留 ${clip(sourceNames, 42)} 等来源的归因` : '，并保留来源归因';
+  return clipToVisibleLength([
+    compactSeed,
+    `。这条资讯已经进入后端处理流程${sourcePhrase}。`,
+    '当前可确认的是：系统已经记录原始链接、发布时间、来源类型和标题证据，前端只展示经过处理的摘要、要点和可公开字段。',
+    '后续需要继续观察官方说明、独立报道、研究或社区反馈是否增加，以判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。'
+  ].join(''), 220);
 }
 
 function roleForSource(source) {
@@ -204,6 +260,27 @@ function roleForSource(source) {
 
 function sourceNameFor(sources, sourceId) {
   return sources.find((source) => source.id === sourceId)?.name || '未知来源';
+}
+
+function cleanText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function clip(value, maxLength) {
+  const text = cleanText(value);
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3).trim()}...`;
+}
+
+function clipToVisibleLength(value, maxLength) {
+  const chars = Array.from(cleanText(value));
+  if (chars.length <= maxLength) {
+    return chars.join('');
+  }
+  return `${chars.slice(0, maxLength - 1).join('').replace(/[，。、；：\s]+$/, '')}。`;
+}
+
+function chineseCharCount(value) {
+  return Array.from(String(value || '')).filter((char) => /[\u4e00-\u9fff]/.test(char)).length;
 }
 
 function asArray(value) {

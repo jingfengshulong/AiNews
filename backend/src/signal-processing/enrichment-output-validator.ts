@@ -13,6 +13,9 @@ export function validateEnrichmentOutput(output, context) {
   if (!hasCjk(normalized.aiBrief)) {
     errors.push('User-facing enrichment text must use Simplified Chinese');
   }
+  if (chineseCharCount(normalized.aiBrief) < 100) {
+    errors.push('AI brief is too short');
+  }
   if (wordCount(normalized.aiBrief) > 90 || visibleLength(normalized.aiBrief) > 220) {
     errors.push('AI brief is too long');
   }
@@ -162,6 +165,10 @@ function visibleLength(value) {
 
 function hasCjk(value) {
   return /[\u4e00-\u9fff]/.test(String(value || ''));
+}
+
+function chineseCharCount(value) {
+  return Array.from(String(value || '')).filter((char) => /[\u4e00-\u9fff]/.test(char)).length;
 }
 
 function wordCount(value) {

@@ -270,7 +270,7 @@ async function runLiveOnce({
     sourceService,
     now
   }).clusterArticles();
-  const topicSummary = new TopicClassifier({
+  const topicSummary = await new TopicClassifier({
     topicRepository,
     signalRepository,
     articleRepository,

@@ -136,13 +136,53 @@ export function createNewsServingService({
       };
     },
 
-    getSourceFamilyArchive(family) {
+    listSourceTypes({ previewLimit = 3 } = {}) {
+      const visible = rankedVisibleSignals();
+      const familyCounts = countByFamily(visible);
+      return {
+        sourceTypes: Object.entries(familyCounts).map(([family, signalCount]) => {
+          const familySignals = signalsForSourceFamily(family, visible);
+          return {
+            family,
+            sourceType: family,
+            label: familyLabels[family] || family,
+            signalCount,
+            sourceCount: sourceService.listSources().filter((source) => source.family === family).length,
+            previewSignals: familySignals.slice(0, previewLimit).map(signalSummary)
+          };
+        }).sort((a, b) => b.signalCount - a.signalCount || a.family.localeCompare(b.family))
+      };
+    },
+
+    getSourceTypeArchive(family, pageOptions = {}) {
+      const familySources = sourceService.listSources().filter((source) => source.family === family);
+      if (familySources.length === 0) {
+        return undefined;
+      }
+      const signals = signalsForSourceFamily(family, rankedVisibleSignals());
+      const page = paginate(signals, pageOptions);
+
+      return {
+        sourceType: {
+          family,
+          sourceType: family,
+          label: familyLabels[family] || family,
+          signalCount: signals.length,
+          sourceCount: familySources.length
+        },
+        signals: page.items.map(signalSummary),
+        pageInfo: page.pageInfo
+      };
+    },
+
+    getSourceFamilyArchive(family, pageOptions = {}) {
       const familySources = sourceService.listSources().filter((source) => source.family === family);
       if (familySources.length === 0) {
         return undefined;
       }
       const sourceIds = new Set(familySources.map((source) => source.id));
       const signals = rankedVisibleSignals().filter((signal) => sourceContextForSignal(signal).sources.some((source) => sourceIds.has(source.id)));
+      const page = paginate(signals, pageOptions);
       const articles = articleRepository.listArticles()
         .filter((article) => sourceIds.has(article.sourceId))
         .sort(comparePublishedDesc)
@@ -152,7 +192,8 @@ export function createNewsServingService({
         family,
         label: familyLabels[family] || family,
         sources: familySources.map(sourcePublic),
-        signals: signals.map(signalSummary),
+        signals: page.items.map(signalSummary),
+        pageInfo: page.pageInfo,
         articles
       };
     },
@@ -172,12 +213,14 @@ export function createNewsServingService({
       };
     },
 
-    getDateArchive({ label, from, to }) {
+    getDateArchive({ label, from, to, cursor, limit } = {}) {
       const range = dateRange({ label, from, to, now: now() });
       const signals = rankedVisibleSignals().filter((signal) => withinDateRange(signal.primaryPublishedAt, range.from, range.to));
+      const page = paginate(signals, { cursor, limit });
       return {
         range,
-        signals: signals.map(signalSummary)
+        signals: page.items.map(signalSummary),
+        pageInfo: page.pageInfo
       };
     },
 
@@ -195,26 +238,28 @@ export function createNewsServingService({
       };
     },
 
-    getTopicArchive(slug) {
+    getTopicArchive(slug, pageOptions = {}) {
       const topic = topicRepository.getTopicBySlug(slug);
       if (!topic) {
         return undefined;
       }
       const signals = rankedVisibleSignals()
-        .filter((signal) => topicsForSignal(signal.id).some((item) => item.slug === slug))
-        .map(signalSummary);
+        .filter((signal) => topicsForSignal(signal.id).some((item) => item.slug === slug));
+      const page = paginate(signals, pageOptions);
 
       return {
         topic,
-        signals
+        signals: page.items.map(signalSummary),
+        pageInfo: page.pageInfo
       };
     },
 
-    search({ q = '', topic, sourceFamily, from, to } = {}) {
+    search({ q = '', topic, sourceType, sourceFamily, from, to } = {}) {
       const query = cleanText(q);
       const range = from || to ? dateRange({ from, to, now: now() }) : undefined;
+      const familyFilter = sourceType || sourceFamily;
       const results = rankedVisibleSignals()
-        .filter((signal) => matchesSignalFilters(signal, { query, topic, sourceFamily, range }))
+        .filter((signal) => matchesSignalFilters(signal, { query, topic, sourceFamily: familyFilter, range }))
         .map((signal) => ({
           type: 'signal',
           relevance: relevanceForSignal(signal, query),
@@ -225,7 +270,7 @@ export function createNewsServingService({
         query: {
           q: query,
           topic,
-          sourceFamily,
+          sourceType: familyFilter,
           from,
           to
         },
@@ -396,6 +441,10 @@ export function createNewsServingService({
     return visible.filter((signal) => sourceContextForSignal(signal).articles.some((article) => article.sourceId === sourceId));
   }
 
+  function signalsForSourceFamily(family, visible) {
+    return visible.filter((signal) => signalSummary(signal).sourceFamilies.includes(family));
+  }
+
   function articlesForSource(sourceId) {
     return articleRepository.listArticles().filter((article) => article.sourceId === sourceId);
   }
@@ -537,6 +586,33 @@ function relevanceForArticle(article, query) {
   }
   const text = cleanText([article.title, article.excerpt, article.textForAI].join(' ')).toLowerCase();
   return relevance(text, query);
+}
+
+function paginate(items, { cursor, limit } = {}) {
+  const normalizedLimit = clamp(toInteger(limit, 20), 1, 50);
+  const offset = Math.max(0, toInteger(cursor, 0));
+  const pageItems = items.slice(offset, offset + normalizedLimit);
+  const nextOffset = offset + pageItems.length;
+  const hasMore = nextOffset < items.length;
+  return {
+    items: pageItems,
+    pageInfo: {
+      limit: normalizedLimit,
+      cursor: String(offset),
+      nextCursor: hasMore ? String(nextOffset) : undefined,
+      hasMore,
+      total: items.length
+    }
+  };
+}
+
+function toInteger(value, fallback) {
+  const number = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function relevance(text, query) {

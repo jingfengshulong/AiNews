@@ -296,18 +296,20 @@ test('sources, dates, topics, and search pages render API data', async () => {
     file: 'sources.html',
     url: 'http://localhost/sources.html',
     responses: {
-      '/api/sources': {
-        families: [{ family: 'company_announcement', label: 'Company Announcement', signalCount: 1 }],
-        sources: [{ id: 'src_1', name: 'OpenAI News RSS' }, { id: 'src_2', name: 'NewsAPI AI Coverage' }]
-      },
-      '/api/sources/company_announcement': {
-        family: 'company_announcement',
-        label: 'Company Announcement',
-        signals: [signal]
+      '/api/source-types': {
+        sourceTypes: [{
+          family: 'company_announcement',
+          label: 'Company Announcement',
+          signalCount: 1,
+          previewSignals: [signal]
+        }]
       }
     }
   });
+  assert.match(sourceDom.window.document.querySelector('.page-title').textContent, /来源类型/);
+  assert.equal(sourceDom.window.document.querySelector('.category-card').getAttribute('href'), 'sources.html?family=company_announcement');
   assert.match(sourceDom.window.document.querySelector('.archive-grid').textContent, /OpenAI introduces Agent SDK/);
+  assert.doesNotMatch(sourceDom.window.document.querySelector('.archive-grid').textContent, /OpenAI News RSS/);
   assert.doesNotMatch(sourceDom.window.document.querySelector('.archive-grid').textContent, /企业 AI 采购关键词/);
 
   const datesDom = await renderPage({
@@ -319,6 +321,7 @@ test('sources, dates, topics, and search pages render API data', async () => {
       '/api/dates/week': { range: { label: 'week' }, signals: [signal, homeResponse.rankedSignals[0]] }
     }
   });
+  assert.ok(Array.from(datesDom.window.document.querySelectorAll('.category-card')).some((node) => node.getAttribute('href') === 'dates.html?range=today'));
   assert.match(datesDom.window.document.querySelector('.archive-grid').textContent, /OpenAI introduces Agent SDK/);
   assert.doesNotMatch(datesDom.window.document.querySelector('.archive-grid').textContent, /AI Agent 企业落地/);
 
@@ -334,10 +337,12 @@ test('sources, dates, topics, and search pages render API data', async () => {
       },
       '/api/topics/ai-agent': {
         topic: { slug: 'ai-agent', name: 'AI Agent' },
-        signals: [signal]
+        signals: [signal],
+        pageInfo: { limit: 20, hasMore: false }
       }
     }
   });
+  assert.equal(topicsDom.window.document.querySelector('.topic-row').getAttribute('href'), 'topics.html?topic=ai-agent');
   assert.match(topicsDom.window.document.querySelector('.topic-list').textContent, /OpenAI introduces Agent SDK/);
   assert.doesNotMatch(topicsDom.window.document.querySelector('.topic-list').textContent, /企业流程自动化/);
 
@@ -374,6 +379,58 @@ test('sources, dates, topics, and search pages render API data', async () => {
   assert.doesNotMatch(searchDom.window.document.querySelector('.result-list').textContent, /NewsAPI article confirms/);
   assert.equal(searchDom.window.document.querySelector('.result-row').getAttribute('href'), 'details.html?id=sig_0001');
   assert.doesNotMatch(searchDom.window.document.querySelector('.result-list').textContent, /流程自动化成为企业 AI 预算/);
+});
+
+test('category detail pages stream additional results with cursor pagination', async () => {
+  const first = homeResponse.leadSignal;
+  const second = { ...homeResponse.rankedSignals[0], id: 'sig_0003', title: 'Second streamed signal' };
+
+  const sourceDom = await renderPage({
+    file: 'sources.html',
+    url: 'http://localhost/sources.html?family=company_announcement',
+    responses: {
+      '/api/source-types/company_announcement?limit=6': {
+        sourceType: { family: 'company_announcement', label: 'Company Announcement', signalCount: 2 },
+        signals: [first],
+        pageInfo: { limit: 6, nextCursor: '1', hasMore: true }
+      },
+      '/api/source-types/company_announcement?limit=6&cursor=1': {
+        sourceType: { family: 'company_announcement', label: 'Company Announcement', signalCount: 2 },
+        signals: [second],
+        pageInfo: { limit: 6, hasMore: false }
+      }
+    }
+  });
+  sourceDom.window.document.querySelector('[data-load-more]').click();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.match(sourceDom.window.document.querySelector('.archive-stream').textContent, /OpenAI introduces Agent SDK/);
+  assert.match(sourceDom.window.document.querySelector('.archive-stream').textContent, /Second streamed signal/);
+
+  const dateDom = await renderPage({
+    file: 'dates.html',
+    url: 'http://localhost/dates.html?range=today',
+    responses: {
+      '/api/dates/today?limit=6': {
+        range: { label: 'today' },
+        signals: [first],
+        pageInfo: { limit: 6, hasMore: false }
+      }
+    }
+  });
+  assert.match(dateDom.window.document.querySelector('.archive-stream').textContent, /OpenAI introduces Agent SDK/);
+
+  const topicDom = await renderPage({
+    file: 'topics.html',
+    url: 'http://localhost/topics.html?topic=ai-agent',
+    responses: {
+      '/api/topics/ai-agent?limit=6': {
+        topic: { slug: 'ai-agent', name: 'AI Agent' },
+        signals: [first],
+        pageInfo: { limit: 6, hasMore: false }
+      }
+    }
+  });
+  assert.match(topicDom.window.document.querySelector('.archive-stream').textContent, /OpenAI introduces Agent SDK/);
 });
 
 test('search page runs backend search from the Enter key', async () => {

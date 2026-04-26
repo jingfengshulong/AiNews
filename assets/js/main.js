@@ -1,4 +1,13 @@
 (function () {
+  const sourceTypeLabels = {
+    technology_media: "技术媒体",
+    research: "研究",
+    funding: "投融资",
+    policy: "政策监管",
+    community: "社区",
+    product_launch: "产品发布",
+    company_announcement: "公司公告"
+  };
   const page = document.body.dataset.page;
   const apiBases = Array.from(new Set([
     document.body.dataset.apiBase || "",
@@ -106,7 +115,7 @@
     if (archives) {
       archives.innerHTML = `
         <div>
-          <div class="section-label"><span>BY SOURCE</span><a href="sources.html">VIEW ALL</a></div>
+          <div class="section-label"><span>BY SOURCE TYPE</span><a href="sources.html">VIEW ALL</a></div>
           <div class="entry-list">
             ${asArray(home.sourceSummaries).slice(0, 5).map((item) => `
               <a class="entry-row" href="sources.html?family=${encodeURIComponent(item.family)}">
@@ -159,7 +168,7 @@
     setDetail("body", signal.aiBrief || signal.summary);
     setDetail("source", detail.supportingSources.map((source) => source.name).join(" + "));
     setDetail("date", formatDate(signal.primaryPublishedAt));
-    setDetail("category", signal.sourceFamilies.join(" / "));
+    setDetail("category", sourceTypeNames(signal.sourceFamilies).join(" / "));
     setDetail("topic", signal.topics.map((topic) => topic.name).join(" / "));
     setDetail("heat", formatScore(signal.heatScore));
     setDetail("score", formatScore(signal.signalScore));
@@ -209,56 +218,93 @@
   }
 
   async function hydrateSourcesPage() {
-    const data = await fetchApi("/api/sources");
+    const params = new URLSearchParams(window.location.search);
+    const family = params.get("family") || params.get("sourceType") || params.get("type");
+    if (family) {
+      await hydrateCategoryStream({
+        path: `/api/source-types/${encodeURIComponent(family)}`,
+        title: "来源类型流",
+        emptyTitle: "该来源类型暂无资讯",
+        getHeader: (data) => data.sourceType || { family, label: family },
+        headerLabel: (header) => header.label || header.family,
+        headerCount: (header) => header.signalCount
+      });
+      return;
+    }
+
+    const data = await fetchApi("/api/source-types");
+    const sourceTypes = asArray(data.sourceTypes);
+    setText(".page-title", "按来源类型浏览");
+    setText(".page-intro", "来源类型回答“这条资讯从哪类渠道来”，例如技术媒体、研究、产品发布、社区和政策；具体来源名称只在详情页作为归因出现。");
     const stat = document.querySelector(".page-stat strong");
     if (stat) {
-      stat.textContent = String(data.sources.length);
+      stat.textContent = String(sourceTypes.length);
     }
     const grid = document.querySelector(".archive-grid");
     if (!grid) {
       return;
     }
-    const archives = await Promise.all(data.families.map(async (family) => {
-      try {
-        return await fetchApi(`/api/sources/${encodeURIComponent(family.family)}`);
-      } catch {
-        return { family: family.family, label: family.label, signals: [] };
-      }
-    }));
-    grid.innerHTML = archives.map((archive) => `
-      <div class="archive-group">
-        <div class="section-label"><span>${escapeHtml(archive.label || archive.family)}</span><span>${archive.signals.length} signals</span></div>
-        <div class="entry-list">
-          ${archive.signals.slice(0, 4).map(signalRow).join("")}
-        </div>
-      </div>
-    `).join("");
+    grid.innerHTML = sourceTypes.map((item) => categoryCard({
+      href: `sources.html?family=${encodeURIComponent(item.family)}`,
+      label: item.label || item.family,
+      kicker: "SOURCE TYPE",
+      count: `${item.signalCount || 0} signals`,
+      previewSignals: item.previewSignals
+    })).join("");
   }
 
   async function hydrateDatesPage() {
+    const params = new URLSearchParams(window.location.search);
+    const range = params.get("range");
+    const date = params.get("date");
+    if (range || date) {
+      await hydrateCategoryStream({
+        path: date ? `/api/dates?from=${encodeURIComponent(date)}&to=${encodeURIComponent(date)}` : `/api/dates/${encodeURIComponent(range)}`,
+        title: date ? `${date} 资讯流` : `${dateRangeLabel(range)}资讯流`,
+        emptyTitle: "该日期暂无资讯",
+        getHeader: (data) => data.range || { label: range || date },
+        headerLabel: (header) => date || dateRangeLabel(header.label),
+        headerCount: () => undefined
+      });
+      return;
+    }
+
     const groups = await Promise.all([
-      ["今天", "/api/dates/today"],
-      ["昨天", "/api/dates/yesterday"],
-      ["本周", "/api/dates/week"]
-    ].map(async ([label, path]) => [label, await fetchApi(path)]));
+      ["今天", "today", "/api/dates/today"],
+      ["昨天", "yesterday", "/api/dates/yesterday"],
+      ["本周", "week", "/api/dates/week"]
+    ].map(async ([label, key, path]) => [label, key, await fetchApi(path)]));
     const stat = document.querySelector(".page-stat strong");
     if (stat) {
-      stat.textContent = String(groups.at(-1)[1].signals.length);
+      stat.textContent = String(groups.at(-1)?.[2]?.signals?.length || 0);
     }
     const grid = document.querySelector(".archive-grid");
     if (grid) {
-      grid.innerHTML = groups.map(([label, group], index) => `
-        <div class="archive-group ${index === 2 ? "wide" : ""}">
-          <div class="section-label"><span>${label}</span><span>${group.signals.length} signals</span></div>
-          <div class="entry-list">
-            ${group.signals.slice(0, 6).map(signalRow).join("")}
-          </div>
-        </div>
-      `).join("");
+      grid.innerHTML = groups.map(([label, key, group]) => categoryCard({
+        href: `dates.html?range=${encodeURIComponent(key)}`,
+        label,
+        kicker: "DATE WINDOW",
+        count: `${asArray(group.signals).length} signals`,
+        previewSignals: group.signals
+      })).join("");
     }
   }
 
   async function hydrateTopicsPage() {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("topic") || params.get("slug");
+    if (slug) {
+      await hydrateCategoryStream({
+        path: `/api/topics/${encodeURIComponent(slug)}`,
+        title: "专题资讯流",
+        emptyTitle: "该专题暂无资讯",
+        getHeader: (data) => data.topic || { slug, name: slug },
+        headerLabel: (header) => header.name || header.slug,
+        headerCount: (header) => header.signalCount
+      });
+      return;
+    }
+
     const data = await fetchApi("/api/topics");
     const activeTopics = data.topics.filter((topic) => topic.signalCount > 0);
     const stat = document.querySelector(".page-stat strong");
@@ -268,16 +314,16 @@
     const rows = await Promise.all(activeTopics.map(async (topic) => {
       const archive = await fetchApi(`/api/topics/${encodeURIComponent(topic.slug)}`);
       const lead = archive.signals[0];
-      return lead ? `
-        <a class="topic-row" href="${detailHref(lead.id)}">
+      return `
+        <a class="topic-row" href="topics.html?topic=${encodeURIComponent(topic.slug)}">
           <span class="topic-name">${escapeHtml(topic.name)}</span>
           <div>
-            <h3>${escapeHtml(lead.title)}</h3>
-            <p>${escapeHtml(lead.summary || sourceLine(lead))}</p>
+            <h3>${escapeHtml(lead?.title || topic.description || topic.name)}</h3>
+            <p>${escapeHtml(lead?.summary || `${topic.signalCount} 条资讯等待展开`)}</p>
           </div>
-          <span class="heat-value">${formatScore(lead.heatScore)}</span>
+          <span class="heat-value">${escapeHtml(topic.signalCount || 0)}</span>
         </a>
-      ` : "";
+      `;
     }));
     const topicList = document.querySelector(".topic-list");
     if (topicList) {
@@ -327,7 +373,7 @@
             <p>${escapeHtml(item.summary || sourceLine(item))}</p>
             <span class="meta">
               <span>signal</span>
-              <span>${escapeHtml(item.sourceFamilies?.join(" / ") || "")}</span>
+              <span>${escapeHtml(sourceTypeNames(item.sourceFamilies).join(" / "))}</span>
               <span>${escapeHtml(formatDate(item.primaryPublishedAt))}</span>
             </span>
           </div>
@@ -388,6 +434,128 @@
     `;
   }
 
+  function categoryCard({ href, label, kicker, count, previewSignals }) {
+    const previews = asArray(previewSignals).slice(0, 3);
+    return `
+      <a class="category-card archive-group" href="${escapeHtml(href)}">
+        <div class="section-label"><span>${escapeHtml(kicker)}</span><span>${escapeHtml(count)}</span></div>
+        <h2>${escapeHtml(label)}</h2>
+        <div class="category-preview">
+          ${previews.length ? previews.map((signal) => `
+            <span>
+              <strong>${escapeHtml(compactHeroTitle(signal.title))}</strong>
+              <em>${escapeHtml(formatScore(signal.heatScore))}</em>
+            </span>
+          `).join("") : "<span><strong>暂无可展示资讯</strong><em>0</em></span>"}
+        </div>
+      </a>
+    `;
+  }
+
+  async function hydrateCategoryStream({ path, title, emptyTitle, getHeader, headerLabel, headerCount }) {
+    const grid = document.querySelector(".archive-grid") || document.querySelector(".topic-list");
+    if (!grid) {
+      return;
+    }
+    grid.classList.add("archive-stream-shell");
+    grid.innerHTML = `
+      <div class="archive-group wide">
+        <div class="section-label"><span data-stream-kicker>${escapeHtml(title)}</span><span data-stream-count>LOADING</span></div>
+        <div class="archive-stream entry-list" aria-live="polite"></div>
+        <button class="load-more" type="button" data-load-more>继续加载</button>
+        <div class="stream-sentinel" data-stream-sentinel></div>
+      </div>
+    `;
+
+    const stream = grid.querySelector(".archive-stream");
+    const button = grid.querySelector("[data-load-more]");
+    const countNode = grid.querySelector("[data-stream-count]");
+    const kickerNode = grid.querySelector("[data-stream-kicker]");
+    const sentinel = grid.querySelector("[data-stream-sentinel]");
+    let nextCursor;
+    let loading = false;
+    let loaded = 0;
+
+    const loadPage = async () => {
+      if (loading) {
+        return;
+      }
+      loading = true;
+      button.disabled = true;
+      button.textContent = "加载中";
+      const data = await fetchApi(paginatedPath(path, { limit: 6, cursor: nextCursor }));
+      const header = getHeader(data);
+      const signals = asArray(data.signals);
+      nextCursor = data.pageInfo?.nextCursor;
+      loaded += signals.length;
+      const label = headerLabel(header);
+      const total = headerCount(header) || data.pageInfo?.total;
+
+      setText(".page-title", label);
+      setText(".page-intro", "向下浏览这个分类下的处理后资讯；列表会按热度和新鲜度继续加载，直到该分类没有更多内容。");
+      if (kickerNode) {
+        kickerNode.textContent = title;
+      }
+      if (countNode) {
+        countNode.textContent = total ? `${loaded}/${total} signals` : `${loaded} signals`;
+      }
+      const stat = document.querySelector(".page-stat strong");
+      const statLabel = document.querySelector(".page-stat span");
+      if (stat) {
+        stat.textContent = String(total || loaded);
+      }
+      if (statLabel) {
+        statLabel.textContent = total ? "当前分类资讯" : "已加载资讯";
+      }
+      if (signals.length) {
+        stream.insertAdjacentHTML("beforeend", signals.map(signalRow).join(""));
+      }
+      if (!loaded) {
+        stream.innerHTML = statePanel({
+          title: emptyTitle,
+          summary: "当前分类还没有通过后端处理的可见资讯。"
+        }, { label: "EMPTY STREAM", sourceOutcomeCounts: {} });
+      }
+      const hasMore = Boolean(data.pageInfo?.hasMore && nextCursor);
+      button.hidden = !hasMore;
+      button.disabled = !hasMore;
+      button.textContent = hasMore ? "继续加载" : "已加载完";
+      loading = false;
+    };
+
+    button.addEventListener("click", () => {
+      loadPage().catch((error) => {
+        button.textContent = `加载失败：${error.message}`;
+      });
+    });
+
+    await loadPage();
+
+    if ("IntersectionObserver" in window && sentinel) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !button.hidden) {
+          loadPage().catch(() => {});
+        }
+      }, { rootMargin: "240px" });
+      observer.observe(sentinel);
+    }
+  }
+
+  function paginatedPath(path, { limit, cursor } = {}) {
+    const separator = path.includes("?") ? "&" : "?";
+    const cursorPart = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+    return `${path}${separator}limit=${encodeURIComponent(limit)}${cursorPart}`;
+  }
+
+  function dateRangeLabel(value) {
+    const labels = {
+      today: "今天",
+      yesterday: "昨天",
+      week: "本周"
+    };
+    return labels[value] || value || "日期";
+  }
+
   function setDetail(key, value) {
     document.querySelectorAll(`[data-detail-field="${key}"]`).forEach((node) => {
       node.textContent = value || "";
@@ -446,7 +614,7 @@
     if (archives) {
       archives.innerHTML = `
         <div>
-          <div class="section-label"><span>BY SOURCE</span><a href="sources.html">VIEW ALL</a></div>
+          <div class="section-label"><span>BY SOURCE TYPE</span><a href="sources.html">VIEW ALL</a></div>
           <div class="entry-list">${stateEntry("来源状态", copy.sourceLine)}</div>
         </div>
         <div>
@@ -685,6 +853,10 @@
       return signal.sourceFamilies.join(" / ");
     }
     return "";
+  }
+
+  function sourceTypeNames(families = []) {
+    return asArray(families).map((family) => sourceTypeLabels[family] || family).filter(Boolean);
   }
 
   function sourceNames(sources) {

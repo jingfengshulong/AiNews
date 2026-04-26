@@ -73,6 +73,13 @@ function routeApiRequest({ request, url, servingService }) {
     const detail = servingService.getSignalDetail(parts[2]);
     return detail ? ok(detail) : notFound();
   }
+  if (url.pathname === '/api/source-types') {
+    return ok(servingService.listSourceTypes());
+  }
+  if (parts[1] === 'source-types' && parts[2]) {
+    const archive = servingService.getSourceTypeArchive(decodeURIComponent(parts[2]), pageOptions(url));
+    return archive ? ok(archive) : notFound();
+  }
   if (url.pathname === '/api/sources') {
     return ok(servingService.listSources());
   }
@@ -81,29 +88,34 @@ function routeApiRequest({ request, url, servingService }) {
     return archive ? ok(archive) : notFound();
   }
   if (parts[1] === 'sources' && parts[2]) {
-    const archive = servingService.getSourceFamilyArchive(decodeURIComponent(parts[2]));
+    const archive = servingService.getSourceFamilyArchive(decodeURIComponent(parts[2]), pageOptions(url));
     return archive ? ok(archive) : notFound();
   }
   if (parts[1] === 'dates' && parts[2]) {
-    return ok(servingService.getDateArchive({ label: decodeURIComponent(parts[2]) }));
+    return ok(servingService.getDateArchive({
+      label: decodeURIComponent(parts[2]),
+      ...pageOptions(url)
+    }));
   }
   if (url.pathname === '/api/dates') {
     return ok(servingService.getDateArchive({
       from: url.searchParams.get('from'),
-      to: url.searchParams.get('to')
+      to: url.searchParams.get('to'),
+      ...pageOptions(url)
     }));
   }
   if (url.pathname === '/api/topics') {
     return ok(servingService.listTopics());
   }
   if (parts[1] === 'topics' && parts[2]) {
-    const archive = servingService.getTopicArchive(decodeURIComponent(parts[2]));
+    const archive = servingService.getTopicArchive(decodeURIComponent(parts[2]), pageOptions(url));
     return archive ? ok(archive) : notFound();
   }
   if (url.pathname === '/api/search') {
     return ok(servingService.search({
       q: url.searchParams.get('q') || '',
       topic: url.searchParams.get('topic') || undefined,
+      sourceType: url.searchParams.get('sourceType') || undefined,
       sourceFamily: url.searchParams.get('sourceFamily') || undefined,
       from: url.searchParams.get('from') || undefined,
       to: url.searchParams.get('to') || undefined
@@ -119,6 +131,13 @@ function ok(body) {
 
 function notFound() {
   return { status: 404, body: { error: 'not_found' } };
+}
+
+function pageOptions(url) {
+  return {
+    cursor: url.searchParams.get('cursor') || undefined,
+    limit: url.searchParams.get('limit') || undefined
+  };
 }
 
 function writeStaticFile({ response, url, staticRoot }) {

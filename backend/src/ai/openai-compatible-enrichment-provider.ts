@@ -97,7 +97,7 @@ function createPromptPayload(context) {
   return {
     task: 'Generate AI enrichment for this clustered news signal.',
     outputSchema: {
-      aiBrief: 'Simplified Chinese string, <= 220 Chinese characters',
+      aiBrief: 'Simplified Chinese string, 100 to 220 Chinese characters',
       keyPoints: [{ text: 'Simplified Chinese string, <= 100 Chinese characters', sourceIds: ['source id'] }],
       timeline: [{ label: 'Simplified Chinese string, <= 100 Chinese characters', at: 'ISO timestamp when available', sourceIds: ['source id'] }],
       sourceMix: [{ sourceId: 'source id', sourceName: 'source name', role: 'official|media|research|community|product|supporting' }],

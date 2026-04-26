@@ -508,6 +508,124 @@ input {
   grid-column: 1 / -1;
 }
 
+.category-card {
+  position: relative;
+  min-height: 260px;
+  display: grid;
+  align-content: space-between;
+  padding: 20px 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.category-card::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 72px;
+  height: 2px;
+  background: var(--cyan);
+  transform-origin: left;
+  transform: scaleX(0.42);
+  transition: transform 180ms ease;
+}
+
+.category-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+  background: rgba(237, 246, 248, 0.028);
+}
+
+.category-card:hover::before {
+  transform: scaleX(1);
+}
+
+.category-card h2 {
+  margin: 14px 0 22px;
+  font-size: clamp(26px, 4vw, 44px);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.category-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.category-preview span {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: center;
+  color: var(--soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.category-preview strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-preview em {
+  color: var(--amber);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-style: normal;
+}
+
+.archive-stream-shell {
+  grid-template-columns: 1fr;
+}
+
+.archive-stream .entry-row {
+  min-height: 132px;
+}
+
+.archive-stream .entry-row h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.archive-stream .entry-row p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.load-more {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: rgba(237, 246, 248, 0.04);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.load-more:hover:not(:disabled) {
+  color: #061014;
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.load-more:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.stream-sentinel {
+  height: 1px;
+}
+
 .entry-row,
 .result-row,
 .topic-row {

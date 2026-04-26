@@ -483,6 +483,68 @@ test('source archive endpoints return family and source-specific signal lists', 
   });
 });
 
+test('source type archive endpoints expose category previews and paginated streams without raw source navigation', async () => {
+  const { servingService, runtime, media } = seedServingFixture();
+  const mediaArticleA = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_media_a',
+    sourceId: media.id,
+    title: 'AI browser agents add workflow automation controls',
+    excerpt: 'Browser agents add workflow automation features.',
+    publishedAt: '2026-04-21T10:30:00.000Z',
+    textForAI: 'AI browser agents add workflow automation controls for enterprise teams.',
+    contentHash: 'e'.repeat(64)
+  });
+  const mediaArticleB = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_media_b',
+    sourceId: media.id,
+    title: 'Enterprise teams compare agent observability tools',
+    excerpt: 'Teams compare agent observability and monitoring products.',
+    publishedAt: '2026-04-21T10:15:00.000Z',
+    textForAI: 'Enterprise teams compare agent observability tools across AI products.',
+    contentHash: 'f'.repeat(64)
+  });
+  createSignal(runtime, {
+    title: mediaArticleA.title,
+    summary: mediaArticleA.excerpt,
+    primaryPublishedAt: mediaArticleA.publishedAt,
+    heatScore: 81,
+    signalScore: 74,
+    aiBrief: mediaArticleA.excerpt,
+    articles: [mediaArticleA],
+    topics: [{ slug: 'ai-agent', confidence: 0.82 }]
+  });
+  createSignal(runtime, {
+    title: mediaArticleB.title,
+    summary: mediaArticleB.excerpt,
+    primaryPublishedAt: mediaArticleB.publishedAt,
+    heatScore: 79,
+    signalScore: 72,
+    aiBrief: mediaArticleB.excerpt,
+    articles: [mediaArticleB],
+    topics: [{ slug: 'large-model-products', confidence: 0.76 }]
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const landing = await getJson(baseUrl, '/api/source-types');
+    const firstPage = await getJson(baseUrl, '/api/source-types/technology_media?limit=2');
+    const secondPage = await getJson(baseUrl, `/api/source-types/technology_media?limit=2&cursor=${firstPage.body.pageInfo.nextCursor}`);
+
+    assert.equal(landing.response.status, 200);
+    assert.ok(Array.isArray(landing.body.sourceTypes));
+    assert.equal(Object.hasOwn(landing.body, 'sources'), false);
+    assert.ok(landing.body.sourceTypes.some((item) => item.family === 'technology_media' && item.previewSignals.length > 0));
+    assert.equal(firstPage.response.status, 200);
+    assert.equal(firstPage.body.sourceType.family, 'technology_media');
+    assert.equal(firstPage.body.signals.length, 2);
+    assert.equal(firstPage.body.pageInfo.limit, 2);
+    assert.equal(firstPage.body.pageInfo.hasMore, true);
+    assert.equal(secondPage.response.status, 200);
+    assert.equal(secondPage.body.pageInfo.hasMore, false);
+    assert.ok(secondPage.body.signals.length >= 1);
+    assert.ok(firstPage.body.signals.every((signal) => signal.sourceFamilies.includes('technology_media')));
+  });
+});
+
 test('date archive endpoints return visible signals for today, week, and arbitrary ranges', async () => {
   const { servingService } = seedServingFixture();
 
@@ -501,6 +563,49 @@ test('date archive endpoints return visible signals for today, week, and arbitra
   });
 });
 
+test('date and topic archives support paginated category streams', async () => {
+  const { servingService, runtime, media } = seedServingFixture();
+  const extraArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_topic_extra',
+    sourceId: media.id,
+    title: 'Agent workflow launch expands enterprise rollout',
+    excerpt: 'An agent workflow launch expands enterprise rollout.',
+    publishedAt: '2026-04-21T10:45:00.000Z',
+    textForAI: 'An agent workflow launch expands enterprise rollout and tool use.',
+    contentHash: '9'.repeat(64)
+  });
+  createSignal(runtime, {
+    title: extraArticle.title,
+    summary: extraArticle.excerpt,
+    primaryPublishedAt: extraArticle.publishedAt,
+    heatScore: 87,
+    signalScore: 80,
+    aiBrief: extraArticle.excerpt,
+    articles: [extraArticle],
+    topics: [{ slug: 'ai-agent', confidence: 0.83 }]
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const today = await getJson(baseUrl, '/api/dates/today?limit=1');
+    const todayNext = await getJson(baseUrl, `/api/dates/today?limit=1&cursor=${today.body.pageInfo.nextCursor}`);
+    const agent = await getJson(baseUrl, '/api/topics/ai-agent?limit=1');
+    const agentNext = await getJson(baseUrl, `/api/topics/ai-agent?limit=1&cursor=${agent.body.pageInfo.nextCursor}`);
+
+    assert.equal(today.response.status, 200);
+    assert.equal(today.body.signals.length, 1);
+    assert.equal(today.body.pageInfo.limit, 1);
+    assert.equal(today.body.pageInfo.hasMore, true);
+    assert.equal(todayNext.response.status, 200);
+    assert.equal(todayNext.body.signals.length, 1);
+    assert.equal(agent.response.status, 200);
+    assert.equal(agent.body.signals.length, 1);
+    assert.equal(agent.body.pageInfo.hasMore, true);
+    assert.equal(agentNext.response.status, 200);
+    assert.equal(agentNext.body.signals.length, 1);
+    assert.ok(agentNext.body.signals.every((signal) => signal.topics.some((topic) => topic.slug === 'ai-agent')));
+  });
+});
+
 test('topic endpoints list topics and return topic-specific signals', async () => {
   const { servingService } = seedServingFixture();
 
@@ -516,12 +621,12 @@ test('topic endpoints list topics and return topic-specific signals', async () =
   });
 });
 
-test('GET /api/search searches text and applies topic, source family, and date filters', async () => {
+test('GET /api/search searches text and applies topic, source type, and date filters', async () => {
   const { servingService } = seedServingFixture();
 
   await withServer(servingService, async (baseUrl) => {
     const keyword = await getJson(baseUrl, '/api/search?q=enterprise%20Agent');
-    const filtered = await getJson(baseUrl, '/api/search?q=agent&topic=research&sourceFamily=research&from=2026-04-20&to=2026-04-20');
+    const filtered = await getJson(baseUrl, '/api/search?q=agent&topic=research&sourceType=research&from=2026-04-20&to=2026-04-20');
 
     assert.equal(keyword.response.status, 200);
     assert.equal(keyword.body.query.q, 'enterprise Agent');
@@ -532,5 +637,7 @@ test('GET /api/search searches text and applies topic, source family, and date f
     assert.ok(filtered.body.results.every((result) => result.type === 'signal'));
     assert.ok(filtered.body.results.every((result) => result.sourceFamilies.includes('research')));
     assert.ok(filtered.body.results.every((result) => result.primaryPublishedAt.startsWith('2026-04-20')));
+    assert.equal(filtered.body.query.sourceType, 'research');
+    assert.equal(Object.hasOwn(filtered.body.query, 'sourceFamily'), false);
   });
 });

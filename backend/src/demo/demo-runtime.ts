@@ -84,7 +84,7 @@ export async function createDemoRuntime({ now = () => new Date(nowIso) } = {}) {
     now
   }).clusterArticles();
 
-  const topicSummary = new TopicClassifier({
+  const topicSummary = await new TopicClassifier({
     topicRepository,
     signalRepository,
     articleRepository,

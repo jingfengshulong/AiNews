@@ -102,7 +102,7 @@ test('topic repository seeds the default product topics', () => {
   ]);
 });
 
-test('topic classifier assigns multiple explainable rule topics to a signal', () => {
+test('topic classifier assigns multiple explainable rule topics to a signal', async () => {
   const runtime = createRuntime();
   const official = createSource(runtime.sourceService, {
     name: 'OpenAI News',
@@ -117,7 +117,7 @@ test('topic classifier assigns multiple explainable rule topics to a signal', ()
     contentHash: 'a'.repeat(64)
   });
 
-  const result = new TopicClassifier({
+  const result = await new TopicClassifier({
     topicRepository: runtime.topicRepository,
     signalRepository: runtime.signalRepository,
     articleRepository: runtime.articleRepository,
@@ -135,7 +135,7 @@ test('topic classifier assigns multiple explainable rule topics to a signal', ()
   assert.ok(assignments.every((assignment) => assignment.evidence.matchedBy));
 });
 
-test('topic classifier covers research, video, edge, policy, funding, and model product topics', () => {
+test('topic classifier covers research, video, edge, policy, funding, and model product topics', async () => {
   const runtime = createRuntime();
   const research = createSource(runtime.sourceService, {
     name: 'arXiv AI Recent',
@@ -223,7 +223,7 @@ test('topic classifier covers research, video, edge, policy, funding, and model 
     createSignalWithArticle(runtime, item);
   }
 
-  new TopicClassifier({
+  await new TopicClassifier({
     topicRepository: runtime.topicRepository,
     signalRepository: runtime.signalRepository,
     articleRepository: runtime.articleRepository,
@@ -237,7 +237,85 @@ test('topic classifier covers research, video, edge, policy, funding, and model 
   }
 });
 
-test('topic classifier is idempotent when the same signal is classified again', () => {
+test('topic classifier uses controlled AI suggestions and ignores invalid topic labels', async () => {
+  const runtime = createRuntime();
+  const media = createSource(runtime.sourceService, {
+    name: 'Creative Tools Daily',
+    family: 'technology_media',
+    trustScore: 0.7
+  });
+  const { signal } = createSignalWithArticle(runtime, {
+    source: media,
+    rawItemId: 'raw_ai_suggestion',
+    title: 'Creative studio update adds multimodal timeline controls',
+    textForAI: 'Creative studio update adds multimodal timeline controls for production teams.',
+    contentHash: '3'.repeat(64)
+  });
+  const calls = [];
+
+  const result = await new TopicClassifier({
+    topicRepository: runtime.topicRepository,
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicSuggestionProvider: {
+      suggestTopics: async (context) => {
+        calls.push(context.allowedTopics.map((topic) => topic.slug));
+        return [
+          { topicSlug: 'ai-video', confidence: 0.91, reason: 'AI matched this to production-oriented video tooling.' },
+          { topicSlug: 'uncontrolled-label', confidence: 0.99, reason: 'This label is not part of the taxonomy.' }
+        ];
+      }
+    }
+  }).classifySignals();
+  const assignments = runtime.topicRepository.listSignalTopics(signal.id);
+  const slugs = assignments.map((assignment) => assignment.topicSlug);
+  const aiVideo = assignments.find((assignment) => assignment.topicSlug === 'ai-video');
+
+  assert.equal(result.classifiedSignals, 1);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].includes('ai-video'));
+  assert.ok(slugs.includes('ai-video'));
+  assert.equal(slugs.includes('uncontrolled-label'), false);
+  assert.equal(aiVideo.method, 'ai');
+  assert.equal(aiVideo.evidence.matchedBy, 'ai_topic_provider');
+});
+
+test('topic classifier falls back to deterministic rules when AI suggestions are invalid', async () => {
+  const runtime = createRuntime();
+  const media = createSource(runtime.sourceService, {
+    name: 'Developer Daily',
+    family: 'technology_media',
+    trustScore: 0.7
+  });
+  const { signal } = createSignalWithArticle(runtime, {
+    source: media,
+    rawItemId: 'raw_ai_fallback',
+    title: 'OpenAI launches Agent SDK for developers',
+    textForAI: 'Agent SDK for workflow automation and tool use.',
+    contentHash: '4'.repeat(64)
+  });
+
+  await new TopicClassifier({
+    topicRepository: runtime.topicRepository,
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicSuggestionProvider: {
+      suggestTopics: async () => [
+        { topicSlug: 'not-in-taxonomy', confidence: 0.97, reason: 'Invalid label.' }
+      ]
+    }
+  }).classifySignals();
+  const assignments = runtime.topicRepository.listSignalTopics(signal.id);
+  const slugs = assignments.map((assignment) => assignment.topicSlug);
+
+  assert.ok(slugs.includes('ai-agent'));
+  assert.equal(slugs.includes('not-in-taxonomy'), false);
+  assert.equal(assignments.find((assignment) => assignment.topicSlug === 'ai-agent').method, 'rule');
+});
+
+test('topic classifier is idempotent when the same signal is classified again', async () => {
   const runtime = createRuntime();
   const media = createSource(runtime.sourceService, {
     name: 'Developer Daily',
@@ -258,8 +336,8 @@ test('topic classifier is idempotent when the same signal is classified again', 
     sourceService: runtime.sourceService
   });
 
-  classifier.classifySignals();
-  classifier.classifySignals();
+  await classifier.classifySignals();
+  await classifier.classifySignals();
 
   const assignments = runtime.topicRepository.listSignalTopics(signal.id);
 

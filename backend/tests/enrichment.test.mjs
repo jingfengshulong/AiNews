@@ -170,6 +170,50 @@ test('enrichment jobs are enqueued for pending signals and persist attributable 
   assert.equal(updated.enrichmentError, undefined);
 });
 
+test('enrichment repairs short provider briefs before completing detail output', async () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'OpenAI News',
+    family: 'company_announcement',
+    trustScore: 0.95,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_short_brief',
+    sourceId: source.id,
+    title: 'OpenAI launches Agent SDK controls',
+    excerpt: 'OpenAI launches Agent SDK controls for enterprise developers.',
+    textForAI: 'OpenAI launches Agent SDK controls for enterprise developers with deployment, governance, and workflow details.',
+    contentHash: '7'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  runtime.queue.enqueue('enrichment', { signalId: signal.id }, { jobKey: `enrichment:${signal.id}` });
+
+  const summary = await processEnrichmentJobs({
+    queue: runtime.queue,
+    handler: createHandler(runtime, {
+      generate: async () => ({
+        aiBrief: '太短摘要。',
+        keyPoints: [{ text: '官方来源确认了产品更新和开发者能力变化。', sourceIds: [source.id] }],
+        timeline: [{ label: '官方发布了相关产品更新。', sourceIds: [source.id] }],
+        sourceMix: [{ sourceId: source.id, sourceName: source.name, role: 'official' }],
+        nextWatch: '继续关注官方说明、迁移路径和开发者反馈。',
+        relatedSignalIds: []
+      })
+    })
+  });
+  const updated = runtime.signalRepository.getSignal(signal.id);
+
+  assert.equal(summary.completed, 1);
+  assert.equal(updated.enrichmentStatus, 'completed');
+  assert.ok(chineseCharCount(updated.aiBrief) >= 100);
+  assert.match(updated.aiBrief, /太短摘要/);
+  assert.match(updated.aiBrief, /OpenAI launches Agent SDK controls/);
+});
+
 test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {
@@ -296,6 +340,7 @@ test('enrichment falls back safely when provider is unavailable', async () => {
   assert.equal(updated.enrichmentStatus, 'fallback');
   assert.equal(updated.enrichmentMeta.errorCategory, 'provider_unavailable');
   assert.match(updated.aiBrief, /基础来源信息/);
+  assert.ok(chineseCharCount(updated.aiBrief) >= 100);
   assert.equal(updated.sourceMix[0].sourceId, source.id);
   assert.doesNotMatch(updated.aiBrief, /backend-only sentence/);
 });
@@ -343,3 +388,7 @@ test('worker can run queued enrichment jobs through the configured enrichment ha
   assert.equal(summary.completed, 1);
   assert.equal(runtime.signalRepository.getSignal(signal.id).enrichmentStatus, 'completed');
 });
+
+function chineseCharCount(value) {
+  return Array.from(String(value || '')).filter((char) => /[\u4e00-\u9fff]/.test(char)).length;
+}

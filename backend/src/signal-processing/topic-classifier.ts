@@ -1,33 +1,51 @@
 export class TopicClassifier {
-  constructor({ topicRepository, signalRepository, articleRepository, sourceService, now = () => new Date() } = {}) {
+  constructor({
+    topicRepository,
+    signalRepository,
+    articleRepository,
+    sourceService,
+    topicSuggestionProvider,
+    maxTopicsPerSignal = 4,
+    now = () => new Date()
+  } = {}) {
     this.topicRepository = topicRepository;
     this.signalRepository = signalRepository;
     this.articleRepository = articleRepository;
     this.sourceService = sourceService;
+    this.topicSuggestionProvider = topicSuggestionProvider;
+    this.maxTopicsPerSignal = maxTopicsPerSignal;
     this.now = now;
   }
 
-  classifySignals() {
+  async classifySignals() {
     this.topicRepository.seedDefaultTopics();
     const signals = this.signalRepository.listSignals();
+    const allowedTopics = this.topicRepository.listTopics();
+    const allowedSlugs = new Set(allowedTopics.map((topic) => topic.slug));
     let topicAssignments = 0;
 
     for (const signal of signals) {
       const context = this.signalContext(signal);
-      const candidates = classifyContext(context);
+      const candidates = await classifyContext(context, {
+        allowedTopics,
+        allowedSlugs,
+        maxTopicsPerSignal: this.maxTopicsPerSignal,
+        topicSuggestionProvider: this.topicSuggestionProvider
+      });
       for (const candidate of candidates) {
         this.topicRepository.upsertSignalTopic({
           signalId: signal.id,
           topicSlug: candidate.topicSlug,
-          method: 'rule',
+          method: candidate.method || 'rule',
           confidence: candidate.confidence,
           reason: candidate.reason,
           evidence: {
             matchedBy: candidate.matchedBy,
-            matchedTerms: candidate.matchedTerms,
+            matchedTerms: candidate.matchedTerms || [],
             sourceFamilies: context.sourceFamilies,
             sourceTypes: context.sourceTypes,
-            aiReady: true,
+            aiReady: Boolean(this.topicSuggestionProvider),
+            aiSuggested: candidate.method === 'ai',
             classifiedAt: this.now().toISOString()
           }
         });
@@ -75,14 +93,25 @@ export class TopicClassifier {
   }
 }
 
-function classifyContext(context) {
-  const candidates = [];
+async function classifyContext(context, {
+  allowedTopics = [],
+  allowedSlugs = new Set(),
+  maxTopicsPerSignal = 4,
+  topicSuggestionProvider
+} = {}) {
+  const candidates = await aiCandidatesForContext({
+    context,
+    allowedTopics,
+    allowedSlugs,
+    topicSuggestionProvider
+  });
   addSourceFamilyTopics(candidates, context);
   for (const rule of keywordRules) {
     const matchedTerms = matchingTerms(context.text, rule.terms);
     if (matchedTerms.length > 0) {
       candidates.push({
         topicSlug: rule.topicSlug,
+        method: 'rule',
         confidence: rule.confidence,
         reason: rule.reason,
         matchedBy: 'keyword',
@@ -91,13 +120,50 @@ function classifyContext(context) {
     }
   }
 
-  return dedupeCandidates(candidates);
+  return dedupeCandidates(candidates)
+    .filter((candidate) => allowedSlugs.has(candidate.topicSlug))
+    .sort((a, b) => b.confidence - a.confidence || a.topicSlug.localeCompare(b.topicSlug))
+    .slice(0, maxTopicsPerSignal);
+}
+
+async function aiCandidatesForContext({ context, allowedTopics, allowedSlugs, topicSuggestionProvider }) {
+  if (!topicSuggestionProvider?.suggestTopics) {
+    return [];
+  }
+
+  try {
+    const output = await topicSuggestionProvider.suggestTopics({
+      ...context,
+      allowedTopics
+    });
+    return asArray(output?.topics || output)
+      .map((item) => normalizeAiSuggestion(item))
+      .filter((candidate) => candidate?.topicSlug && allowedSlugs.has(candidate.topicSlug));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAiSuggestion(item) {
+  const slug = typeof item === 'string' ? item : (item?.topicSlug || item?.slug);
+  if (!slug) {
+    return undefined;
+  }
+  return {
+    topicSlug: slug,
+    method: 'ai',
+    confidence: clamp(Number(item?.confidence ?? 0.72), 0, 1),
+    reason: item?.reason || 'AI provider suggested this controlled topic.',
+    matchedBy: 'ai_topic_provider',
+    matchedTerms: []
+  };
 }
 
 function addSourceFamilyTopics(candidates, context) {
   if (context.sourceFamilies.includes('research') || context.sourceTypes.some((type) => ['arxiv', 'semantic_scholar', 'crossref'].includes(type))) {
     candidates.push({
       topicSlug: 'research',
+      method: 'rule',
       confidence: 0.88,
       reason: 'The signal is backed by research source metadata.',
       matchedBy: 'source_family',
@@ -107,6 +173,7 @@ function addSourceFamilyTopics(candidates, context) {
   if (context.sourceFamilies.includes('company_announcement')) {
     candidates.push({
       topicSlug: 'company-announcements',
+      method: 'rule',
       confidence: 0.86,
       reason: 'The lead evidence includes an official company announcement source.',
       matchedBy: 'source_family',
@@ -116,6 +183,7 @@ function addSourceFamilyTopics(candidates, context) {
   if (context.sourceFamilies.includes('funding')) {
     candidates.push({
       topicSlug: 'funding',
+      method: 'rule',
       confidence: 0.84,
       reason: 'The source family identifies this signal as funding-related.',
       matchedBy: 'source_family',
@@ -125,6 +193,7 @@ function addSourceFamilyTopics(candidates, context) {
   if (context.sourceFamilies.includes('policy')) {
     candidates.push({
       topicSlug: 'policy',
+      method: 'rule',
       confidence: 0.84,
       reason: 'The source family identifies this signal as policy-related.',
       matchedBy: 'source_family',
@@ -134,6 +203,7 @@ function addSourceFamilyTopics(candidates, context) {
   if (context.sourceFamilies.includes('product_launch')) {
     candidates.push({
       topicSlug: 'large-model-products',
+      method: 'rule',
       confidence: 0.74,
       reason: 'The source family indicates a product launch or model product update.',
       matchedBy: 'source_family',
@@ -149,6 +219,7 @@ function dedupeCandidates(candidates) {
     if (!existing || candidate.confidence > existing.confidence) {
       bySlug.set(candidate.topicSlug, {
         ...candidate,
+        method: candidate.method || 'rule',
         confidence: round(candidate.confidence)
       });
     }
@@ -166,6 +237,20 @@ function unique(values) {
 
 function round(value) {
   return Math.round(value * 1000) / 1000;
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function asArray(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
 }
 
 const keywordRules = [

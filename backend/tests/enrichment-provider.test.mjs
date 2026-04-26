@@ -127,7 +127,7 @@ test('OpenAI-compatible enrichment provider sends structured chat request and pa
   const promptText = JSON.stringify(requests[0].body.messages);
   assert.match(promptText, /source-official/);
   assert.match(promptText, /sourceIds/);
-  assert.match(promptText, /Simplified Chinese string, <= 220 Chinese characters/);
+  assert.match(promptText, /Simplified Chinese string, 100 to 220 Chinese characters/);
   assert.match(promptText, /2 to 4 keyPoints/);
   assert.match(promptText, /relatedSignalCandidates/);
   assert.match(promptText, /backend-only full article text/);
