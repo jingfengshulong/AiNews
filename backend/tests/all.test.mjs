@@ -15,6 +15,7 @@ import './signal-scoring.test.mjs';
 import './enrichment-provider.test.mjs';
 import './relevance-filter.test.mjs';
 import './enrichment.test.mjs';
+import './enrichment-backfill.test.mjs';
 import './fetch-job-handler.test.mjs';
 import './process-job-handler.test.mjs';
 import './live-runtime.test.mjs';

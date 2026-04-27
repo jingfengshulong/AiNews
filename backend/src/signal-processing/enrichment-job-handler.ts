@@ -1,4 +1,5 @@
 import { validateEnrichmentOutput } from './enrichment-output-validator.ts';
+import { currentEnrichmentVersion } from './enrichment-version.ts';
 
 export class EnrichmentJobError extends Error {
   constructor(message, category = 'enrichment_failed') {
@@ -64,7 +65,8 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
         provider: provider?.name || 'fallback',
         generatedAt: new Date().toISOString(),
         errorCategory: provider?.fallbackReason || 'provider_unavailable',
-        sourceCount: context.sources.length
+        sourceCount: context.sources.length,
+        enrichmentVersion: currentEnrichmentVersion
       });
       return {
         signalId: signal.id,
@@ -82,7 +84,8 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
       signalRepository.updateEnrichmentSuccess(signal.id, validated, {
         provider: provider.name || 'custom',
         generatedAt: new Date().toISOString(),
-        sourceCount: context.sources.length
+        sourceCount: context.sources.length,
+        enrichmentVersion: currentEnrichmentVersion
       });
       return {
         signalId: signal.id,
@@ -97,7 +100,8 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
         provider: provider.name || 'custom',
         failedAt: new Date().toISOString(),
         errorCategory: category,
-        fallbackGenerated: true
+        fallbackGenerated: true,
+        enrichmentVersion: currentEnrichmentVersion
       }, fallback);
       throw new EnrichmentJobError(error.message, category);
     }

@@ -85,6 +85,25 @@ export class SignalRepository {
     return cloneRecord(updated);
   }
 
+  markEnrichmentPending(id, meta = {}) {
+    const existing = this.store.signals.get(id);
+    if (!existing) {
+      throw new Error(`Signal not found: ${id}`);
+    }
+    const updated = {
+      ...existing,
+      enrichmentStatus: 'pending',
+      enrichmentError: undefined,
+      enrichmentMeta: {
+        ...(existing.enrichmentMeta || {}),
+        backfill: meta
+      },
+      updatedAt: new Date().toISOString()
+    };
+    this.store.signals.set(id, updated);
+    return cloneRecord(updated);
+  }
+
   updateEnrichmentSuccess(id, output, meta = {}) {
     const existing = this.store.signals.get(id);
     if (!existing) {
