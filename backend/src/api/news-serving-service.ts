@@ -35,28 +35,26 @@ export function createNewsServingService({
       const visible = rankedVisibleSignals();
       const today = dateKey(now());
       const todaySignals = visible.filter((signal) => dateKey(signal.primaryPublishedAt) === today);
-      const selected = todaySignals.length > 0 ? todaySignals : visible;
-      const leadSignal = selected[0] ? signalSummary(selected[0]) : undefined;
-      const rankedSignals = diversifySignalsBySourceLanguage(
-        visible.filter((signal) => signal.id !== leadSignal?.id),
-        Math.max(0, limit - 1)
-      ).map(signalSummary);
+      const homeSignals = diversifySignalsBySourceLanguage(visible, limit);
+      const leadSignal = homeSignals[0] ? signalSummary(homeSignals[0]) : undefined;
+      const rankedSignals = homeSignals.slice(1).map(signalSummary);
+      const windowDates = homeSignals.map((signal) => signal.primaryPublishedAt).filter(Boolean).sort();
 
       return {
         dataStatus: resolveDataStatus({ visibleCount: visible.length }),
         dataWindow: {
           label: todaySignals.length > 0 ? 'today' : 'latest',
           date: today,
-          includesToday: todaySignals.length > 0,
-          from: selected.at(-1)?.primaryPublishedAt,
-          to: selected[0]?.primaryPublishedAt
+          includesToday: homeSignals.some((signal) => dateKey(signal.primaryPublishedAt) === today),
+          from: windowDates[0],
+          to: windowDates.at(-1)
         },
         leadSignal,
         rankedSignals,
         stats: buildStats(visible),
         sourceSummaries: buildSourceSummaries(visible),
         dateSummaries: buildDateSummaries(visible),
-        tickerItems: selected.slice(0, 6).map((signal) => ({
+        tickerItems: homeSignals.slice(0, 6).map((signal) => ({
           signalId: signal.id,
           text: `${signal.title} · ${sourceContextForSignal(signal).sources.length} sources · heat ${round(signal.heatScore || 0)}`,
           heatScore: signal.heatScore || 0,

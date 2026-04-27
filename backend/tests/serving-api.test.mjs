@@ -404,6 +404,76 @@ test('home and source type streams keep English signals visible after Chinese so
   });
 });
 
+test('GET /api/home does not promote a weak same-day signal above a stronger visible signal', async () => {
+  const runtime = createRuntime();
+  const community = createSource(runtime.sourceService, {
+    name: 'Hacker News AI Search',
+    sourceType: 'hacker_news',
+    family: 'community',
+    apiEndpoint: 'https://hacker-news.firebaseio.com/v0/newstories.json',
+    trustScore: 0.58
+  });
+  const media = createSource(runtime.sourceService, {
+    name: 'Solidot 奇客',
+    family: 'technology_media',
+    language: 'zh-CN',
+    trustScore: 0.6
+  });
+  const sameDayArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_same_day_plain',
+    sourceId: community.id,
+    title: 'I Redesigned My Landing Page So AI Agents Can Read It',
+    excerpt: 'A single-source community post about making a landing page readable by agents.',
+    publishedAt: '2026-04-27T03:13:10.000Z',
+    textForAI: 'A single-source community post about making a landing page readable by agents.',
+    contentHash: 'p'.repeat(64)
+  });
+  const olderArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_older_stronger',
+    sourceId: media.id,
+    title: 'AI 漏洞报告大增促使内核移除缺乏维护的代码',
+    language: 'zh-CN',
+    excerpt: 'Linux 内核开发者宣布移除缺乏维护的旧代码，以应对 AI 生成漏洞报告带来的维护压力。',
+    publishedAt: '2026-04-24T05:24:40.000Z',
+    textForAI: 'Linux 内核开发者宣布移除缺乏维护的旧代码，以应对 AI 生成漏洞报告带来的维护压力。',
+    contentHash: 's'.repeat(64)
+  });
+  const weakToday = createSignal(runtime, {
+    title: sameDayArticle.title,
+    summary: sameDayArticle.excerpt,
+    primaryPublishedAt: sameDayArticle.publishedAt,
+    heatScore: 49.45,
+    signalScore: 61.3,
+    aiBrief: sameDayArticle.excerpt,
+    articles: [sameDayArticle]
+  });
+  const strongerVisible = createSignal(runtime, {
+    title: olderArticle.title,
+    summary: olderArticle.excerpt,
+    primaryPublishedAt: olderArticle.publishedAt,
+    heatScore: 61,
+    signalScore: 81.16,
+    aiBrief: olderArticle.excerpt,
+    articles: [olderArticle]
+  });
+  const servingService = createNewsServingService({
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicRepository: runtime.topicRepository,
+    scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: { mode: 'live', stale: false, sourceOutcomeCounts: { succeeded: 2 } },
+    now: () => new Date('2026-04-27T12:00:00.000Z')
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const { body } = await getJson(baseUrl, '/api/home');
+
+    assert.equal(body.leadSignal.id, strongerVisible.id);
+    assert.ok(body.rankedSignals.some((signal) => signal.id === weakToday.id));
+  });
+});
+
 test('GET /api/home exposes live and stale freshness metadata without secrets', async () => {
   const { runtime, leadSignal } = seedServingFixture();
   const servingService = createNewsServingService({
