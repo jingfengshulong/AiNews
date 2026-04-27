@@ -111,6 +111,38 @@ test('backfill enqueues stale signals by priority and respects dry run', () => {
   assert.equal(runtime.signalRepository.getSignal(fresh.id).enrichmentStatus, 'completed');
 });
 
+test('backfill status filter accepts failed signals', () => {
+  const runtime = createRuntime();
+  const failed = createSignal(runtime.signalRepository, {
+    title: 'Failed signal',
+    signalScore: 50,
+    aiBrief: freshBrief(),
+    keyPoints: [
+      { text: '已有来源摘要。', sourceIds: ['src_1'] },
+      { text: '等待重新精炼。', sourceIds: ['src_1'] }
+    ],
+    enrichmentStatus: 'failed',
+    enrichmentMeta: { enrichmentVersion: currentEnrichmentVersion, errorCategory: 'enrichment_provider_failed' }
+  });
+  createSignal(runtime.signalRepository, {
+    title: 'Completed signal',
+    signalScore: 90,
+    aiBrief: 'Completed signal 当前已有基础来源支撑。',
+    enrichmentStatus: 'completed',
+    enrichmentMeta: { enrichmentVersion: currentEnrichmentVersion }
+  });
+
+  const result = enqueueEnrichmentBackfillJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    dryRun: true,
+    statuses: 'failed',
+    limit: 10
+  });
+
+  assert.deepEqual(result.candidates.map((signal) => signal.id), [failed.id]);
+});
+
 function createSignalRecord(patch) {
   return {
     id: patch.id || 'sig_test',

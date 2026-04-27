@@ -134,6 +134,9 @@ function normalizeStatuses(statuses) {
   if (!statuses) {
     return undefined;
   }
+  if (statuses instanceof Set) {
+    return statuses;
+  }
   const values = Array.isArray(statuses)
     ? statuses
     : String(statuses).split(',');
