@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { ArticleRepository } from '../src/ingestion/article-repository.ts';
 import { InMemoryStore } from '../src/db/in-memory-store.ts';
 import { InMemoryQueue } from '../src/queue/in-memory-queue.ts';
-import { enqueuePendingEnrichmentJobs, createEnrichmentJobHandler, processEnrichmentJobs } from '../src/signal-processing/enrichment-job-handler.ts';
+import { enqueuePendingEnrichmentJobs, createEnrichmentJobHandler, processEnrichmentJobs, createFallbackEnrichmentOutput } from '../src/signal-processing/enrichment-job-handler.ts';
 import { SignalRepository } from '../src/signal-processing/signal-repository.ts';
 import { SourceRepository } from '../src/sources/source-repository.ts';
 import { SourceService } from '../src/sources/source-service.ts';
@@ -263,6 +263,7 @@ test('enrichment repairs short provider briefs before completing detail output',
   assert.match(updated.aiBrief, /OpenAI launches Agent SDK controls/);
   assert.match(updated.aiBrief, /产品更新/);
   assert.doesNotMatch(updated.aiBrief, /后端处理流程|后台已保留/);
+  assert.doesNotMatch(updated.aiBrief, /来源归因显示|页面只展示/);
 });
 
 test('enrichment repairs missing provider structure before validation', async () => {
@@ -311,6 +312,40 @@ test('enrichment repairs missing provider structure before validation', async ()
   assert.match(updated.nextWatch, /继续关注/);
 });
 
+test('fallback enrichment uses article context instead of generic source boilerplate', () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'InfoQ China',
+    family: 'technology_media',
+    trustScore: 0.78,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_aicon_agent',
+    sourceId: source.id,
+    title: '阿里云智能集团高级技术专家刘少伟已确认出席AICon上海站，并分享如何构建企业 Agent 的自动化行动架构',
+    excerpt: '深入探讨 Agent 从原型到量产的工程挑战、数据与记忆的基础设施底座、安全可信的落地保障。',
+    textForAI: '阿里云智能集团高级技术专家刘少伟将在 AICon 上海站分享企业 Agent 的自动化行动架构，讨论 WinNexO、数据到行动断层、多模态数据集成、语义模型、Agent Runtime、权限控制和行业实践。',
+    contentHash: '8'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  const fallback = createFallbackEnrichmentOutput({
+    signal,
+    articles: [{ ...article, role: 'lead' }],
+    sources: [source]
+  });
+  const pointText = fallback.keyPoints.map((point) => point.text).join(' ');
+
+  assert.match(fallback.aiBrief, /企业 Agent|自动化行动架构|AICon/);
+  assert.match(fallback.aiBrief, /工程挑战|数据|记忆|安全可信|落地/);
+  assert.doesNotMatch(fallback.aiBrief, /基础来源信息|相关来源标题|页面只展示/);
+  assert.ok(fallback.keyPoints.length >= 3);
+  assert.match(pointText, /WinNexO|多模态|语义模型|Agent Runtime/);
+});
+
 test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {
@@ -356,7 +391,7 @@ test('enrichment validation rejects copied restricted full text and preserves fa
   assert.equal(failedJob.lastErrorCategory, 'enrichment_validation_failed');
   assert.equal(updated.enrichmentStatus, 'failed');
   assert.match(updated.enrichmentError, /copied restricted source text/i);
-  assert.match(updated.aiBrief, /基础来源信息/);
+  assert.match(updated.aiBrief, /这条资讯聚焦|来源摘要显示/);
   assert.doesNotMatch(updated.aiBrief, /企业系统集成能力/);
 });
 
@@ -401,7 +436,7 @@ test('enrichment validation rejects overlong unattributed output', async () => {
   assert.equal(summary.failed, 1);
   assert.equal(updated.enrichmentStatus, 'failed');
   assert.match(updated.enrichmentError, /AI brief is too long|source mix is required|source references/i);
-  assert.match(updated.aiBrief, /基础来源信息/);
+  assert.match(updated.aiBrief, /这条资讯聚焦|来源摘要显示/);
 });
 
 test('enrichment falls back safely when provider is unavailable', async () => {
@@ -436,7 +471,7 @@ test('enrichment falls back safely when provider is unavailable', async () => {
   assert.equal(summary.failed, 0);
   assert.equal(updated.enrichmentStatus, 'fallback');
   assert.equal(updated.enrichmentMeta.errorCategory, 'provider_unavailable');
-  assert.match(updated.aiBrief, /基础来源信息/);
+  assert.match(updated.aiBrief, /这条资讯聚焦|来源摘要显示/);
   assert.doesNotMatch(updated.aiBrief, /AI 精炼暂不可用/);
   assert.ok(chineseCharCount(updated.aiBrief) >= 100);
   assert.equal(updated.sourceMix[0].sourceId, source.id);

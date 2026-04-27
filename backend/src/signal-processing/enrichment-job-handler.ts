@@ -175,30 +175,28 @@ export function createFallbackEnrichmentOutput(context) {
   const sources = asArray(context.sources);
   const articles = asArray(context.articles);
   const leadArticle = articles[0];
+  const facts = fallbackFacts(context);
   const sourceMix = sources.map((source) => ({
     sourceId: source.id,
     sourceName: source.name,
     role: roleForSource(source)
   }));
-  const keyPoints = articles.slice(0, 3).map((article) => ({
-    text: `${sourceNameFor(sources, article.sourceId)} 提供了与该信号相关的基础来源信息。`,
-    sourceIds: [article.sourceId]
-  }));
+  const keyPoints = fallbackKeyPoints({ articles, sources, facts });
 
   return {
-    aiBrief: buildSubstantiveBrief('目前已保留基础来源信息，已根据来源标题、摘要和发布时间完成基础整理。', context),
+    aiBrief: buildFallbackBrief(facts),
     keyPoints: keyPoints.length ? keyPoints : sources.slice(0, 3).map((source) => ({
-      text: `${source.name} 提供了该信号的基础来源信息。`,
+      text: `${source.name} 提供了该信号的来源标题、摘要和发布时间。`,
       sourceIds: [source.id]
     })),
     timeline: articles.slice(0, 4).map((article) => ({
-      label: `${sourceNameFor(sources, article.sourceId)} 捕获了相关来源。`,
+      label: `${sourceNameFor(sources, article.sourceId)} 发布了这条相关资讯。`,
       at: article.publishedAt,
       sourceIds: [article.sourceId]
     })),
     sourceMix,
     nextWatch: leadArticle
-      ? '继续关注官方更新、独立报道和更多来源确认。'
+      ? facts.watch
       : '继续关注后续来源确认和更新时间。',
     relatedSignalIds: []
   };
@@ -251,30 +249,115 @@ function validSourceIds(value, context) {
   return ids.length > 0 && ids.every((sourceId) => sourceIds.has(sourceId));
 }
 
+function fallbackFacts(context) {
+  const sources = asArray(context.sources);
+  const articles = asArray(context.articles);
+  const leadArticle = articles[0] || {};
+  const sourceNames = sources.slice(0, 3).map((source) => source.name).filter(Boolean).join('、') || '已登记来源';
+  const title = cleanText(context.signal?.title || leadArticle.title);
+  const excerpt = cleanText(leadArticle.excerpt);
+  const terms = extractContextTerms([
+    title,
+    excerpt,
+    ...articles.map((article) => article.textForAI)
+  ].join(' '));
+  const compactTerms = terms.slice(0, 5).join('、');
+  const subject = title || '这条资讯';
+  const summaryLine = excerpt || `${sourceNames} 已提供标题、发布时间和来源归因。`;
+  const watch = compactTerms
+    ? `继续关注${compactTerms}的官方说明、落地案例和更多来源确认。`
+    : '继续关注官方更新、独立报道和更多来源确认。';
+
+  return {
+    sourceNames,
+    title: subject,
+    excerpt: summaryLine,
+    terms,
+    watch
+  };
+}
+
+function fallbackKeyPoints({ articles, sources, facts }) {
+  const leadArticle = articles[0];
+  if (!leadArticle) {
+    return [];
+  }
+  const sourceName = sourceNameFor(sources, leadArticle.sourceId);
+  const terms = facts.terms.slice(0, 5).join('、');
+  return [
+    {
+      text: `${sourceName} 报道了${clip(facts.title, 70)}。`,
+      sourceIds: [leadArticle.sourceId]
+    },
+    facts.excerpt ? {
+      text: hasCjk(facts.excerpt) ? clip(facts.excerpt, 96) : `来源摘要提到：${clip(facts.excerpt, 82)}`,
+      sourceIds: [leadArticle.sourceId]
+    } : undefined,
+    terms ? {
+      text: `后续可重点核对${terms}的实际进展。`,
+      sourceIds: [leadArticle.sourceId]
+    } : undefined
+  ].filter(Boolean);
+}
+
+function buildFallbackBrief(facts) {
+  const terms = facts.terms.slice(0, 5).join('、');
+  const termSentence = terms
+    ? `可提取的主题线索包括${terms}，这些信息能帮助判断它更偏向会议议程、企业采用、技术架构还是产品落地。`
+    : '目前可提取的主题线索仍有限，需要结合后续来源判断它对产品发布、企业采用、技术路线或行业竞争的影响。';
+  const brief = [
+    `这条资讯聚焦${clip(facts.title, 62)}。`,
+    `来源摘要显示，${stripTerminalPunctuation(clip(facts.excerpt, 78))}。`,
+    termSentence
+  ].join('');
+  return clipToVisibleLength(ensureMinimumChineseLength(brief), 220);
+}
+
+function extractContextTerms(value) {
+  const text = cleanText(value);
+  const candidates = [
+    '企业 Agent',
+    '自动化行动架构',
+    'AICon',
+    'WinNexO',
+    '数据到行动',
+    '多模态数据集成',
+    '语义模型',
+    'Agent Runtime',
+    '权限控制',
+    '行业实践',
+    '工程挑战',
+    '数据与记忆',
+    '安全可信',
+    '落地保障',
+    '大模型推理',
+    '智算架构'
+  ];
+  return unique(candidates.filter((term) => text.includes(term)));
+}
+
 function buildSubstantiveBrief(seed, context, output = {}) {
   const sources = asArray(context.sources);
   const articles = asArray(context.articles);
   const sourceNames = sources.slice(0, 3).map((source) => source.name).filter(Boolean).join('、') || '已登记来源';
-  const articleTitles = articles.slice(0, 2).map((article) => article.title).filter(Boolean).join('；') || context.signal.title;
   const title = clip(context.signal.title, 72);
-  const opening = clip(cleanText(seed), 86) || `${title} 当前已有基础来源支撑。`;
+  const opening = cleanText(seed) || `${title} 当前已有基础来源支撑。`;
   const keyPointText = asArray(output.keyPoints)
     .map((point) => stripTerminalPunctuation(typeof point === 'string' ? point : point?.text))
     .filter(Boolean)
-    .slice(0, 2)
+    .slice(0, 1)
     .join('；');
   const nextWatch = stripTerminalPunctuation(output.nextWatch);
   const repairedBrief = [
     opening,
+    chineseCharCount(opening) < 20 && !opening.includes(title.slice(0, 12)) ? `相关标题是${title}。` : '',
     keyPointText
       ? `要点显示：${keyPointText}。`
       : `这条信号目前由${sourceNames}提供支撑，核心线索集中在“${title}”及相关来源标题。`,
-    `来源归因显示为${sourceNames}，页面只展示经过处理的摘要、要点和可公开字段，避免直接暴露受限原文。`,
     nextWatch
       ? `后续观察：${nextWatch}。`
-      : `后续应继续核对官方说明、独立报道、研究或社区反馈，判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。`,
-    `可优先回看这些来源标题：${clip(articleTitles, 80)}。`
-  ].join('');
+      : `后续应继续核对官方说明、独立报道、研究或社区反馈，判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。`
+  ].filter(Boolean).join('');
   return finalizeSubstantiveBrief(ensureMinimumChineseLength(repairedBrief), {
     seed,
     title,
@@ -360,4 +443,8 @@ function asArray(value) {
     return [];
   }
   return Array.isArray(value) ? value : [value];
+}
+
+function unique(values) {
+  return Array.from(new Set(values));
 }
