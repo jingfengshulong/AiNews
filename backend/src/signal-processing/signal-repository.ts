@@ -172,6 +172,40 @@ export class SignalRepository {
     return undefined;
   }
 
+  findSignalByLeadArticleId(articleId) {
+    const leadLink = Array.from(this.store.signalArticles.values())
+      .find((link) => link.articleId === articleId && link.role === 'lead');
+    if (!leadLink) {
+      return undefined;
+    }
+    return cloneRecord(this.store.signals.get(leadLink.signalId));
+  }
+
+  findSignalsByLeadArticleId(articleId) {
+    return Array.from(this.store.signalArticles.values())
+      .filter((link) => link.articleId === articleId && link.role === 'lead')
+      .map((link) => this.store.signals.get(link.signalId))
+      .filter(Boolean)
+      .map(cloneRecord);
+  }
+
+  replaceSignalArticles(signalId, articles) {
+    const expected = new Map(articles.map((article) => [article.articleId, article.role || 'supporting']));
+    for (const link of Array.from(this.store.signalArticles.values())) {
+      if (link.signalId !== signalId || expected.has(link.articleId)) {
+        continue;
+      }
+      this.store.signalArticles.delete(link.id);
+      this.store.signalArticleIndex.delete(`${link.signalId}:${link.articleId}`);
+    }
+
+    return articles.map((article) => this.linkArticle({
+      signalId,
+      articleId: article.articleId,
+      role: article.role
+    }));
+  }
+
   linkArticle(input) {
     if (!input.signalId) {
       throw new Error('Signal article link requires signal id');

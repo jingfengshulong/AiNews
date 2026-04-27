@@ -41,6 +41,19 @@ export class SourceRelationRepository {
   listRelations() {
     return Array.from(this.store.sourceRelations.values()).map(cloneRecord);
   }
+
+  deleteRelations(predicate) {
+    let deleted = 0;
+    for (const relation of Array.from(this.store.sourceRelations.values())) {
+      if (!predicate(cloneRecord(relation))) {
+        continue;
+      }
+      this.store.sourceRelations.delete(relation.id);
+      this.store.sourceRelationIndex.delete(relationKey(relation));
+      deleted += 1;
+    }
+    return deleted;
+  }
 }
 
 function relationKey(input) {

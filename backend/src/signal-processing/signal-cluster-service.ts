@@ -44,7 +44,17 @@ export class SignalClusterService {
       if (signal) {
         signal = this.signalRepository.touchSignal(signal.id);
         updatedSignals += 1;
+      } else if (typeof this.signalRepository.findSignalByLeadArticleId === 'function') {
+        signal = this.signalRepository.findSignalByLeadArticleId(lead.id);
+        if (signal) {
+          signal = this.signalRepository.touchSignal(signal.id);
+          updatedSignals += 1;
+        }
       } else {
+        signal = undefined;
+      }
+
+      if (!signal) {
         signal = this.signalRepository.createSignal({
           title: lead.title,
           primaryPublishedAt: lead.publishedAt,
@@ -52,6 +62,33 @@ export class SignalClusterService {
           enrichmentStatus: 'pending'
         });
         createdSignals += 1;
+      }
+
+      const clusterArticleIds = new Set(cluster.map((member) => member.id));
+      this.signalRepository.replaceSignalArticles?.(signal.id, cluster.map((member) => ({
+        articleId: member.id,
+        role: member.id === lead.id ? 'lead' : 'supporting'
+      })));
+      this.sourceRelationRepository.deleteRelations?.((relation) => (
+        relation.relationType === 'signal_support'
+        && relation.signalId === signal.id
+        && relation.articleId
+        && !clusterArticleIds.has(relation.articleId)
+      ));
+      for (const historicalSignal of this.signalRepository.findSignalsByLeadArticleId?.(lead.id) || []) {
+        if (historicalSignal.id === signal.id) {
+          continue;
+        }
+        this.signalRepository.replaceSignalArticles?.(historicalSignal.id, cluster.map((member) => ({
+          articleId: member.id,
+          role: member.id === lead.id ? 'lead' : 'supporting'
+        })));
+        this.sourceRelationRepository.deleteRelations?.((relation) => (
+          relation.relationType === 'signal_support'
+          && relation.signalId === historicalSignal.id
+          && relation.articleId
+          && !clusterArticleIds.has(relation.articleId)
+        ));
       }
 
       for (const member of cluster) {
@@ -152,7 +189,7 @@ function pairEvidence(first, second, duplicateMap) {
   const clusterScore = round(Math.min(0.94, (titleSimilarity + sourceDiversityBoost) * timeMultiplier));
 
   return {
-    shouldCluster: titleSimilarity >= relatedTitleThreshold && withinTimeWindow,
+    shouldCluster: titleSimilarity >= relatedTitleThreshold && withinTimeWindow && reasons.includes('source_diversity'),
     clusterScore,
     titleSimilarity: round(titleSimilarity),
     hoursApart,

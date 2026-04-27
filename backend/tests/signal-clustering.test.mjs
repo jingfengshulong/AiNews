@@ -279,3 +279,152 @@ test('signal clustering reuses existing signal when the same cluster is processe
   assert.equal(runtime.signalRepository.listSignals().length, 1);
   assert.equal(runtime.signalRepository.listSignalArticles().length, 2);
 });
+
+test('signal clustering replaces stale support links when an existing lead signal is reclustered', () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'Solidot',
+    family: 'technology_media',
+    trustScore: 0.68
+  });
+
+  const lead = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_1',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.solidot.org/story?sid=84135',
+    title: 'Solidot reports Linux maintainers remove stale kernel code',
+    publishedAt: '2026-04-24T08:00:00.000Z',
+    contentHash: '4'.repeat(64)
+  });
+  const unrelated = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_2',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.solidot.org/story?sid=84136',
+    title: 'Ubuntu 26.04 LTS is released with desktop updates',
+    publishedAt: '2026-04-24T08:20:00.000Z',
+    contentHash: '5'.repeat(64)
+  });
+  const pollutedSignal = runtime.signalRepository.createSignal({
+    title: lead.title,
+    primaryPublishedAt: lead.publishedAt,
+    status: 'candidate',
+    enrichmentStatus: 'completed'
+  });
+  runtime.signalRepository.linkArticle({ signalId: pollutedSignal.id, articleId: lead.id, role: 'lead' });
+  runtime.signalRepository.linkArticle({ signalId: pollutedSignal.id, articleId: unrelated.id, role: 'supporting' });
+  runtime.sourceRelationRepository.upsertRelation({
+    sourceId: unrelated.sourceId,
+    articleId: unrelated.id,
+    signalId: pollutedSignal.id,
+    relationType: 'signal_support',
+    evidence: {
+      clusterScore: 0.98,
+      titleSimilarity: 0.2,
+      reasons: ['duplicate_confirmed'],
+      role: 'supporting'
+    }
+  });
+
+  const result = new SignalClusterService({
+    articleRepository: runtime.articleRepository,
+    signalRepository: runtime.signalRepository,
+    sourceRelationRepository: runtime.sourceRelationRepository,
+    sourceService: runtime.sourceService
+  }).clusterArticles();
+  const pollutedLinks = runtime.signalRepository.listSignalArticles(pollutedSignal.id);
+  const staleSupportRelations = runtime.sourceRelationRepository.listRelations()
+    .filter((relation) => relation.relationType === 'signal_support' && relation.signalId === pollutedSignal.id && relation.articleId === unrelated.id);
+
+  assert.equal(result.createdSignals, 1);
+  assert.equal(result.updatedSignals, 1);
+  assert.deepEqual(pollutedLinks.map((link) => link.articleId), [lead.id]);
+  assert.equal(staleSupportRelations.length, 0);
+});
+
+test('signal clustering also prunes duplicate historical signals with the same lead article', () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'Solidot',
+    family: 'technology_media',
+    trustScore: 0.68
+  });
+
+  const lead = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_1',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.solidot.org/story?sid=84135',
+    title: 'Solidot reports Linux maintainers remove stale kernel code',
+    publishedAt: '2026-04-24T08:00:00.000Z',
+    contentHash: '8'.repeat(64)
+  });
+  const unrelated = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_2',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.solidot.org/story?sid=84136',
+    title: 'Ubuntu 26.04 LTS is released with desktop updates',
+    publishedAt: '2026-04-24T08:20:00.000Z',
+    contentHash: '9'.repeat(64)
+  });
+  const cleanSignal = runtime.signalRepository.createSignal({
+    title: lead.title,
+    primaryPublishedAt: lead.publishedAt,
+    status: 'candidate'
+  });
+  const historicalSignal = runtime.signalRepository.createSignal({
+    title: lead.title,
+    primaryPublishedAt: lead.publishedAt,
+    status: 'candidate'
+  });
+  runtime.signalRepository.linkArticle({ signalId: cleanSignal.id, articleId: lead.id, role: 'lead' });
+  runtime.signalRepository.linkArticle({ signalId: historicalSignal.id, articleId: lead.id, role: 'lead' });
+  runtime.signalRepository.linkArticle({ signalId: historicalSignal.id, articleId: unrelated.id, role: 'supporting' });
+
+  new SignalClusterService({
+    articleRepository: runtime.articleRepository,
+    signalRepository: runtime.signalRepository,
+    sourceRelationRepository: runtime.sourceRelationRepository,
+    sourceService: runtime.sourceService
+  }).clusterArticles();
+
+  assert.deepEqual(
+    runtime.signalRepository.listSignalArticles(historicalSignal.id).map((link) => link.articleId),
+    [lead.id]
+  );
+});
+
+test('signal clustering keeps same-source title-only matches separate without duplicate evidence', () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'OSChina',
+    family: 'technology_media',
+    trustScore: 0.66
+  });
+
+  createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_1',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.oschina.net/news/437468/rspack-2-0-released',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    publishedAt: '2026-04-27T08:00:00.000Z',
+    contentHash: '6'.repeat(64)
+  });
+  createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_2',
+    sourceId: source.id,
+    canonicalUrl: 'https://www.oschina.net/news/437474',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    publishedAt: '2026-04-27T08:10:00.000Z',
+    contentHash: '7'.repeat(64)
+  });
+
+  const result = new SignalClusterService({
+    articleRepository: runtime.articleRepository,
+    signalRepository: runtime.signalRepository,
+    sourceRelationRepository: runtime.sourceRelationRepository,
+    sourceService: runtime.sourceService
+  }).clusterArticles();
+
+  assert.equal(result.createdSignals, 2);
+  assert.equal(runtime.signalRepository.listSignals().length, 2);
+  assert.equal(runtime.signalRepository.listSignalArticles().length, 2);
+});

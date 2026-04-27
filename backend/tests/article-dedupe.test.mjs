@@ -94,6 +94,143 @@ test('article dedupe confirms exact content hash matches even when canonical URL
   assert.deepEqual(relation.evidence.reasons, ['content_hash']);
 });
 
+test('article dedupe does not confirm same-source content hash matches across different URLs', () => {
+  const store = new InMemoryStore();
+  const articles = new ArticleRepository(store);
+  const relations = new SourceRelationRepository(store);
+  const service = new ArticleDedupeService({ articleRepository: articles, sourceRelationRepository: relations });
+
+  const sharedHash = 'c'.repeat(64);
+  createArticle(articles, {
+    rawItemId: 'raw_1',
+    sourceId: 'src_oschina',
+    canonicalUrl: 'https://www.oschina.net/news/437468/rspack-2-0-released',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    contentHash: sharedHash
+  });
+  createArticle(articles, {
+    rawItemId: 'raw_2',
+    sourceId: 'src_oschina',
+    canonicalUrl: 'https://www.oschina.net/news/437474',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    contentHash: sharedHash
+  });
+
+  const result = service.dedupeArticles();
+
+  assert.equal(result.confirmedDuplicates, 0);
+  assert.equal(relations.listRelations().filter((relation) => relation.relationType === 'duplicate_confirmed').length, 0);
+});
+
+test('article dedupe does not confirm same-source canonical matches without corroborating evidence', () => {
+  const store = new InMemoryStore();
+  const articles = new ArticleRepository(store);
+  const relations = new SourceRelationRepository(store);
+  const service = new ArticleDedupeService({ articleRepository: articles, sourceRelationRepository: relations });
+
+  const first = createArticle(articles, {
+    rawItemId: 'raw_1',
+    sourceId: 'src_solidot',
+    canonicalUrl: 'https://www.solidot.org/',
+    title: 'Solidot reports Linux maintainers remove stale kernel code',
+    publishedAt: '2026-04-24T08:00:00.000Z',
+    contentHash: '1'.repeat(64)
+  });
+  const second = createArticle(articles, {
+    rawItemId: 'raw_2',
+    sourceId: 'src_solidot',
+    canonicalUrl: 'https://www.solidot.org/',
+    title: 'Ubuntu 26.04 LTS is released with desktop updates',
+    publishedAt: '2026-04-24T08:20:00.000Z',
+    contentHash: '2'.repeat(64)
+  });
+
+  const result = service.dedupeArticles();
+  const updated = articles.listArticles();
+
+  assert.equal(result.confirmedDuplicates, 0);
+  assert.equal(result.possibleDuplicates, 0);
+  assert.equal(updated.find((article) => article.id === first.id).dedupeStatus, 'candidate');
+  assert.equal(updated.find((article) => article.id === second.id).dedupeStatus, 'candidate');
+  assert.equal(relations.listRelations().filter((relation) => relation.relationType === 'duplicate_confirmed').length, 0);
+});
+
+test('article dedupe removes stale confirmed duplicate relations when canonical URLs diverge', () => {
+  const store = new InMemoryStore();
+  const articles = new ArticleRepository(store);
+  const relations = new SourceRelationRepository(store);
+  const service = new ArticleDedupeService({ articleRepository: articles, sourceRelationRepository: relations });
+
+  const lead = createArticle(articles, {
+    rawItemId: 'raw_1',
+    sourceId: 'src_solidot',
+    canonicalUrl: 'https://www.solidot.org/story?sid=84135',
+    title: 'Solidot reports Linux maintainers remove stale kernel code',
+    publishedAt: '2026-04-24T08:00:00.000Z',
+    contentHash: '3'.repeat(64)
+  });
+  const unrelated = createArticle(articles, {
+    rawItemId: 'raw_2',
+    sourceId: 'src_solidot',
+    canonicalUrl: 'https://www.solidot.org/story?sid=84136',
+    title: 'Ubuntu 26.04 LTS is released with desktop updates',
+    publishedAt: '2026-04-24T08:20:00.000Z',
+    contentHash: '4'.repeat(64)
+  });
+
+  relations.upsertRelation({
+    sourceId: unrelated.sourceId,
+    articleId: unrelated.id,
+    relationType: 'duplicate_confirmed',
+    evidence: {
+      confidence: 0.98,
+      titleSimilarity: 0.2,
+      hoursApart: 0.33,
+      reasons: ['canonical_url'],
+      targetArticleId: lead.id,
+      scoreImpact: {
+        duplicateSupport: true,
+        heatBoost: 0.196,
+        credibilityBoost: 0.118
+      },
+      detectedAt: '2026-04-24T08:30:00.000Z'
+    }
+  });
+
+  service.dedupeArticles();
+
+  assert.equal(relations.listRelations().filter((relation) => relation.relationType === 'duplicate_confirmed').length, 0);
+});
+
+test('article dedupe does not confirm same-source title-only matches', () => {
+  const store = new InMemoryStore();
+  const articles = new ArticleRepository(store);
+  const relations = new SourceRelationRepository(store);
+  const service = new ArticleDedupeService({ articleRepository: articles, sourceRelationRepository: relations });
+
+  createArticle(articles, {
+    rawItemId: 'raw_1',
+    sourceId: 'src_oschina',
+    canonicalUrl: 'https://www.oschina.net/news/437468/rspack-2-0-released',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    publishedAt: '2026-04-27T08:00:00.000Z',
+    contentHash: '5'.repeat(64)
+  });
+  createArticle(articles, {
+    rawItemId: 'raw_2',
+    sourceId: 'src_oschina',
+    canonicalUrl: 'https://www.oschina.net/news/437474',
+    title: 'OSCHINA - Open Source AI Developer Community',
+    publishedAt: '2026-04-27T08:10:00.000Z',
+    contentHash: '6'.repeat(64)
+  });
+
+  const result = service.dedupeArticles();
+
+  assert.equal(result.confirmedDuplicates, 0);
+  assert.equal(relations.listRelations().filter((relation) => relation.relationType === 'duplicate_confirmed').length, 0);
+});
+
 test('article dedupe keeps low-confidence title matches as conservative candidates', () => {
   const store = new InMemoryStore();
   const articles = new ArticleRepository(store);

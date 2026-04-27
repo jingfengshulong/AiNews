@@ -11,6 +11,8 @@ export class ArticleDedupeService {
 
   dedupeArticles() {
     const articles = this.articleRepository.listArticles().sort(articleSort);
+    const articleById = new Map(articles.map((article) => [article.id, article]));
+    const removedStaleRelations = this.removeStaleDuplicateRelations(articleById);
     const duplicateIds = new Set();
     const possibleIds = new Set();
     let confirmedDuplicates = 0;
@@ -29,7 +31,7 @@ export class ArticleDedupeService {
         }
 
         const evidence = compareArticles(lead, candidate);
-        if (evidence.confidence >= confirmedTitleThreshold || evidence.reasons.includes('canonical_url') || evidence.reasons.includes('content_hash')) {
+        if (isConfirmedDuplicate(evidence, lead, candidate)) {
           duplicateIds.add(candidate.id);
           possibleIds.delete(candidate.id);
           this.articleRepository.updateDedupeStatus(lead.id, 'canonical');
@@ -79,8 +81,27 @@ export class ArticleDedupeService {
     return {
       checkedArticles: articles.length,
       confirmedDuplicates,
-      possibleDuplicates
+      possibleDuplicates,
+      removedStaleRelations
     };
+  }
+
+  removeStaleDuplicateRelations(articleById) {
+    if (typeof this.sourceRelationRepository.deleteRelations !== 'function') {
+      return 0;
+    }
+
+    return this.sourceRelationRepository.deleteRelations((relation) => {
+      if (relation.relationType !== 'duplicate_confirmed' || !relation.articleId || !relation.evidence?.targetArticleId) {
+        return false;
+      }
+      const article = articleById.get(relation.articleId);
+      const target = articleById.get(relation.evidence.targetArticleId);
+      if (!article || !target) {
+        return true;
+      }
+      return !isConfirmedDuplicate(compareArticles(target, article), target, article);
+    });
   }
 }
 
@@ -110,15 +131,38 @@ function compareArticles(first, second) {
     reasons.push('source_diversity');
   }
 
-  const exactMatch = reasons.includes('canonical_url') || reasons.includes('content_hash');
-  const confidence = exactMatch ? 0.98 : titleSimilarity * (withinTimeWindow ? 1 : 0.65);
+  const contentHashMatch = reasons.includes('content_hash');
+  const trustedContentHashMatch = contentHashMatch && (
+    first.sourceId !== second.sourceId || hasSameSpecificCanonicalUrl(first, second)
+  );
+  const crossSourceCanonicalMatch = reasons.includes('canonical_url') && reasons.includes('source_diversity');
+  const sameSourceCanonicalMatch = reasons.includes('canonical_url') && !reasons.includes('source_diversity');
+  const trustedExactMatch = trustedContentHashMatch || crossSourceCanonicalMatch || (
+    sameSourceCanonicalMatch
+    && titleSimilarity >= confirmedTitleThreshold
+    && hasSpecificCanonicalUrl(normalizedFirstUrl)
+  );
+  const confidence = trustedExactMatch ? 0.98 : titleSimilarity * (withinTimeWindow ? 1 : 0.65);
 
   return {
     confidence: round(confidence),
     titleSimilarity: round(titleSimilarity),
     hoursApart,
-    reasons: exactMatch ? reasons.filter((reason) => reason === 'canonical_url' || reason === 'content_hash') : reasons
+    reasons: trustedExactMatch ? reasons.filter((reason) => reason === 'canonical_url' || reason === 'content_hash') : reasons
   };
+}
+
+function isConfirmedDuplicate(evidence, first, second) {
+  if (evidence.reasons.includes('content_hash')) {
+    return first.sourceId !== second.sourceId || hasSameSpecificCanonicalUrl(first, second);
+  }
+  if (evidence.reasons.includes('canonical_url')) {
+    return first.sourceId !== second.sourceId || (
+      evidence.titleSimilarity >= confirmedTitleThreshold
+      && hasSameSpecificCanonicalUrl(first, second)
+    );
+  }
+  return first.sourceId !== second.sourceId && evidence.confidence >= confirmedTitleThreshold;
 }
 
 function titleSimilarityScore(firstTitle, secondTitle) {
@@ -165,6 +209,25 @@ function normalizeUrl(value) {
     return url.toString().replace(/\/$/, '');
   } catch {
     return String(value).trim().replace(/\/$/, '');
+  }
+}
+
+function hasSameSpecificCanonicalUrl(first, second) {
+  const normalizedFirstUrl = normalizeUrl(first.canonicalUrl);
+  const normalizedSecondUrl = normalizeUrl(second.canonicalUrl);
+  return normalizedFirstUrl && normalizedFirstUrl === normalizedSecondUrl && hasSpecificCanonicalUrl(normalizedFirstUrl);
+}
+
+function hasSpecificCanonicalUrl(value) {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    return pathParts.length > 0 || url.search.length > 0;
+  } catch {
+    return /\/[^/]+/.test(String(value).replace(/^https?:\/\/[^/]+/i, ''));
   }
 }
 
