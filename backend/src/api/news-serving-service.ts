@@ -37,7 +37,10 @@ export function createNewsServingService({
       const todaySignals = visible.filter((signal) => dateKey(signal.primaryPublishedAt) === today);
       const selected = todaySignals.length > 0 ? todaySignals : visible;
       const leadSignal = selected[0] ? signalSummary(selected[0]) : undefined;
-      const rankedSignals = visible.filter((signal) => signal.id !== leadSignal?.id).slice(0, Math.max(0, limit - 1)).map(signalSummary);
+      const rankedSignals = diversifySignalsBySourceLanguage(
+        visible.filter((signal) => signal.id !== leadSignal?.id),
+        Math.max(0, limit - 1)
+      ).map(signalSummary);
 
       return {
         dataStatus: resolveDataStatus({ visibleCount: visible.length }),
@@ -142,14 +145,14 @@ export function createNewsServingService({
       const familyCounts = countByFamily(visible);
       return {
         sourceTypes: Object.entries(familyCounts).map(([family, signalCount]) => {
-          const familySignals = signalsForSourceFamily(family, visible);
+          const familySignals = diversifySignalsBySourceLanguage(signalsForSourceFamily(family, visible), previewLimit);
           return {
             family,
             sourceType: family,
             label: familyLabels[family] || family,
             signalCount,
             sourceCount: sourceService.listSources().filter((source) => source.family === family).length,
-            previewSignals: familySignals.slice(0, previewLimit).map(signalSummary)
+            previewSignals: familySignals.map(signalSummary)
           };
         }).sort((a, b) => b.signalCount - a.signalCount || a.family.localeCompare(b.family))
       };
@@ -160,7 +163,7 @@ export function createNewsServingService({
       if (familySources.length === 0) {
         return undefined;
       }
-      const signals = signalsForSourceFamily(family, rankedVisibleSignals());
+      const signals = diversifySignalsBySourceLanguage(signalsForSourceFamily(family, rankedVisibleSignals()));
       const page = paginate(signals, pageOptions);
 
       return {
@@ -286,6 +289,46 @@ export function createNewsServingService({
     return signalRepository.listSignals()
       .filter(isVisibleSignal)
       .sort(compareSignalsForProduct);
+  }
+
+  function diversifySignalsBySourceLanguage(signals, limit = signals.length) {
+    const sorted = asArray(signals).filter(Boolean);
+    const normalizedLimit = Math.max(0, Number(limit) || sorted.length);
+    if (sorted.length === 0 || normalizedLimit <= 1) {
+      return sorted.slice(0, normalizedLimit);
+    }
+
+    const selected = [];
+    const selectedIds = new Set();
+    const addSignal = (signal) => {
+      if (!signal || selectedIds.has(signal.id) || selected.length >= normalizedLimit) {
+        return;
+      }
+      selected.push(signal);
+      selectedIds.add(signal.id);
+    };
+
+    addSignal(sorted[0]);
+
+    const firstByLanguage = new Map();
+    for (const signal of sorted) {
+      const language = primaryLanguageForSignal(signal);
+      if (!firstByLanguage.has(language)) {
+        firstByLanguage.set(language, signal);
+      }
+    }
+
+    for (const signal of firstByLanguage.values()) {
+      addSignal(signal);
+    }
+    for (const signal of sorted) {
+      addSignal(signal);
+    }
+    return selected;
+  }
+
+  function primaryLanguageForSignal(signal) {
+    return sourceContextForSignal(signal).sources.find((source) => source.language)?.language || 'unknown';
   }
 
   function resolveDataStatus({ visibleCount = 0 } = {}) {

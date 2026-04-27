@@ -326,6 +326,84 @@ test('GET /api/home returns lead signal, ranked signals, stats, archives, and ti
   });
 });
 
+test('home and source type streams keep English signals visible after Chinese sources are added', async () => {
+  const runtime = createRuntime();
+  const chineseSource = createSource(runtime.sourceService, {
+    name: 'InfoQ China',
+    family: 'technology_media',
+    language: 'zh-CN',
+    trustScore: 0.78
+  });
+  const englishSource = createSource(runtime.sourceService, {
+    name: 'MIT Technology Review RSS',
+    family: 'technology_media',
+    language: 'en',
+    trustScore: 0.78
+  });
+
+  for (let index = 0; index < 9; index += 1) {
+    const article = createArticle(runtime.articleRepository, {
+      rawItemId: `raw_zh_${index}`,
+      sourceId: chineseSource.id,
+      title: `中文 AI 资讯 ${index}`,
+      language: 'zh-CN',
+      excerpt: '中文来源发布了一条 AI 相关资讯。',
+      publishedAt: `2026-04-27T0${index}:00:00.000Z`,
+      textForAI: '中文来源发布了一条 AI 相关资讯。',
+      contentHash: `${index}`.repeat(64).slice(0, 64)
+    });
+    createSignal(runtime, {
+      title: article.title,
+      summary: article.excerpt,
+      primaryPublishedAt: article.publishedAt,
+      heatScore: 90 - index,
+      signalScore: 80 - index,
+      aiBrief: article.excerpt,
+      articles: [article]
+    });
+  }
+
+  const englishArticle = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_en_visible',
+    sourceId: englishSource.id,
+    title: 'MIT reports new AI agent benchmark',
+    language: 'en',
+    excerpt: 'MIT reports a new AI agent benchmark.',
+    publishedAt: '2026-04-27T10:00:00.000Z',
+    textForAI: 'MIT reports a new AI agent benchmark.',
+    contentHash: 'e'.repeat(64)
+  });
+  const englishSignal = createSignal(runtime, {
+    title: englishArticle.title,
+    summary: englishArticle.excerpt,
+    primaryPublishedAt: englishArticle.publishedAt,
+    heatScore: 70,
+    signalScore: 70,
+    aiBrief: englishArticle.excerpt,
+    articles: [englishArticle]
+  });
+
+  const servingService = createNewsServingService({
+    signalRepository: runtime.signalRepository,
+    articleRepository: runtime.articleRepository,
+    sourceService: runtime.sourceService,
+    topicRepository: runtime.topicRepository,
+    scoreComponentRepository: runtime.scoreComponentRepository,
+    dataStatus: { mode: 'live', stale: false, sourceOutcomeCounts: { succeeded: 2 } },
+    now: () => new Date('2026-04-27T12:00:00.000Z')
+  });
+
+  await withServer(servingService, async (baseUrl) => {
+    const home = await getJson(baseUrl, '/api/home');
+    const sourceType = await getJson(baseUrl, '/api/source-types/technology_media?limit=8');
+    const homeSignalIds = [home.body.leadSignal.id, ...home.body.rankedSignals.map((signal) => signal.id)];
+    const sourceTypeSignalIds = sourceType.body.signals.map((signal) => signal.id);
+
+    assert.ok(homeSignalIds.includes(englishSignal.id));
+    assert.ok(sourceTypeSignalIds.includes(englishSignal.id));
+  });
+});
+
 test('GET /api/home exposes live and stale freshness metadata without secrets', async () => {
   const { runtime, leadSignal } = seedServingFixture();
   const servingService = createNewsServingService({
