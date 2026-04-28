@@ -327,11 +327,14 @@ async function runLiveOnce({
     now
   }).scoreSignals();
 
+  const currentRunSignalIds = signalIdsForProcessedArticles({ signalRepository, processSummary });
   enqueuePendingEnrichmentJobs({
     signalRepository,
     queue,
     now: startedAtDate,
-    retryFallback: canGenerateAiEnrichment(enrichmentProvider)
+    retryFallback: canGenerateAiEnrichment(enrichmentProvider),
+    signalIds: runOptions.recovery ? undefined : currentRunSignalIds,
+    runId
   });
   const enrichmentSummary = await processEnrichmentJobs({
     queue,
@@ -342,7 +345,8 @@ async function runLiveOnce({
       provider: enrichmentProvider
     }),
     limit: countDueQueuedJobs(queue, 'enrichment', startedAtDate),
-    now: startedAtDate
+    now: startedAtDate,
+    filter: (job) => job.payload?.runId === runId
   });
 
   const completedAt = now().toISOString();
@@ -644,6 +648,19 @@ function applyProcessOutcomes({ processSummary, outcomesBySourceId }) {
       outcome.processed = (outcome.processed || 0) + 1;
     }
   }
+}
+
+function signalIdsForProcessedArticles({ signalRepository, processSummary }) {
+  const articleIds = new Set((processSummary.results || [])
+    .filter((item) => item.status === 'completed' && item.result?.articleId)
+    .map((item) => item.result.articleId));
+  if (articleIds.size === 0 || typeof signalRepository.listSignalArticles !== 'function') {
+    return [];
+  }
+  return Array.from(new Set(signalRepository.listSignalArticles()
+    .filter((link) => articleIds.has(link.articleId))
+    .map((link) => link.signalId)
+    .filter(Boolean)));
 }
 
 async function applyRelevanceFilter({ articleRepository, sourceService, config, fetchImpl }) {

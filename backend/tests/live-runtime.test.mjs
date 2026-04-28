@@ -584,7 +584,7 @@ test('live runtime retries fallback enrichment after an AI provider becomes avai
   assert.equal(fallbackSignal.enrichmentStatus, 'fallback');
 
   fallbackOnly = false;
-  const report = await runtime.runOnce({ maxItemsPerSource: 1 });
+  const report = await runtime.runOnce({ maxItemsPerSource: 1, recovery: true });
   const completedSignal = runtime.signalRepository.getSignal(fallbackSignal.id);
 
   assert.equal(report.pipeline.enrichment.completed, 1);

@@ -9,11 +9,13 @@ export class EnrichmentJobError extends Error {
   }
 }
 
-export function enqueuePendingEnrichmentJobs({ signalRepository, queue, now = new Date(), retryFallback = false }) {
+export function enqueuePendingEnrichmentJobs({ signalRepository, queue, now = new Date(), retryFallback = false, signalIds, runId } = {}) {
   const runAt = new Date(now);
+  const allowedSignalIds = signalIds ? new Set(signalIds) : undefined;
   return signalRepository.listSignals()
     .filter((signal) => signal.enrichmentStatus === 'pending' || (retryFallback && isRetryableFallbackSignal(signal)))
-    .map((signal) => queue.enqueue('enrichment', { signalId: signal.id }, {
+    .filter((signal) => !allowedSignalIds || allowedSignalIds.has(signal.id))
+    .map((signal) => queue.enqueue('enrichment', { signalId: signal.id, runId }, {
       jobKey: enrichmentJobKey(signal, { retryFallback, now: runAt }),
       runAfter: runAt
     }));
@@ -108,13 +110,13 @@ export function createEnrichmentJobHandler({ signalRepository, articleRepository
   };
 }
 
-export async function processEnrichmentJobs({ queue, handler, limit = 25, now = new Date() }) {
+export async function processEnrichmentJobs({ queue, handler, limit = 25, now = new Date(), filter } = {}) {
   const results = [];
   let completed = 0;
   let failed = 0;
 
   for (let index = 0; index < limit; index += 1) {
-    const job = await queue.claimNext('enrichment', { now });
+    const job = await queue.claimNext('enrichment', { now, filter });
     if (!job) {
       break;
     }
