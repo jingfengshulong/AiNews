@@ -38,7 +38,7 @@ export class InMemoryQueue {
     return Array.from(this.store.jobs.get(lane).values()).map(cloneRecord);
   }
 
-  claimNext(lane, { now = new Date() } = {}) {
+  claimNext(lane, { now = new Date(), filter } = {}) {
     ensureQueueLane(lane);
     const currentTime = new Date(now).getTime();
     for (const job of this.store.jobs.get(lane).values()) {
@@ -46,6 +46,9 @@ export class InMemoryQueue {
         continue;
       }
       if (new Date(job.runAfter).getTime() > currentTime) {
+        continue;
+      }
+      if (filter && !filter(cloneRecord(job))) {
         continue;
       }
 

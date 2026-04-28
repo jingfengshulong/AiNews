@@ -96,14 +96,14 @@ function asArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function processFetchJobs({ queue, handler, limit = 25, now = new Date() }) {
+export async function processFetchJobs({ queue, handler, limit = 25, now = new Date(), filter } = {}) {
   const results = [];
   let completed = 0;
   let retried = 0;
   let failed = 0;
 
   for (let index = 0; index < limit; index += 1) {
-    const job = await queue.claimNext('fetch', { now });
+    const job = await queue.claimNext('fetch', { now, filter });
     if (!job) {
       break;
     }

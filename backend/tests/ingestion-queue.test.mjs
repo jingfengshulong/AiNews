@@ -32,6 +32,21 @@ test('queue supports fetch, processing, and enrichment job lanes with stable job
   assert.equal(queue.list('enrichment')[0].id, enrichmentJob.id);
 });
 
+test('queue claimNext can skip due jobs that do not match a filter', () => {
+  const queue = new InMemoryQueue();
+  const dueAt = new Date('2026-04-21T08:59:00.000Z');
+  queue.enqueue('fetch', { runId: 'old-run', sourceId: 'src_1' }, { jobKey: 'fetch:old', runAfter: dueAt });
+  const current = queue.enqueue('fetch', { runId: 'current-run', sourceId: 'src_1' }, { jobKey: 'fetch:current', runAfter: dueAt });
+
+  const claimed = queue.claimNext('fetch', {
+    now: new Date('2026-04-21T09:00:00.000Z'),
+    filter: (job) => job.payload.runId === 'current-run'
+  });
+
+  assert.equal(claimed.id, current.id);
+  assert.equal(queue.list('fetch').find((job) => job.payload.runId === 'old-run').status, 'queued');
+});
+
 test('scheduler enqueues fetch jobs only for enabled sources whose next fetch time is due', () => {
   const service = createSourceService();
   const queue = new InMemoryQueue();

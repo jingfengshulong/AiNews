@@ -80,6 +80,53 @@ test('fetch job handler persists adapter records, enqueues process jobs, and mar
   assert.equal(runtime.sourceService.getSource(source.id).health.lastSuccessfulAt, '2026-04-21T09:00:00.000Z');
 });
 
+test('fetch job processing can target the current live run without claiming stale queued jobs', async () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService);
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType, runId: 'old-run' }, {
+    jobKey: `fetch:${source.id}:old`,
+    runAfter: dueBeforeTestNow
+  });
+  runtime.queue.enqueue('fetch', { sourceId: source.id, sourceType: source.sourceType, runId: 'current-run' }, {
+    jobKey: `fetch:${source.id}:current`,
+    runAfter: dueBeforeTestNow
+  });
+
+  const handler = createFetchJobHandler({
+    sourceService: runtime.sourceService,
+    rawItemRepository: runtime.rawItemRepository,
+    queue: runtime.queue,
+    adapters: {
+      rss: {
+        fetchSource: async () => [{
+          externalId: 'current-item',
+          title: 'Current run AI item',
+          url: 'https://example.com/current-item',
+          publishedAt: '2026-04-21T08:00:00.000Z',
+          summary: 'A short summary.',
+          rawPayload: { guid: 'current-item' },
+          responseMeta: { adapter: 'test' }
+        }]
+      }
+    }
+  });
+
+  const summary = await processFetchJobs({
+    queue: runtime.queue,
+    handler,
+    limit: 1,
+    now: new Date('2026-04-21T09:00:00.000Z'),
+    filter: (job) => job.payload?.runId === 'current-run'
+  });
+  const oldJob = runtime.queue.list('fetch').find((job) => job.payload.runId === 'old-run');
+  const currentJob = runtime.queue.list('fetch').find((job) => job.payload.runId === 'current-run');
+
+  assert.equal(summary.completed, 1);
+  assert.equal(oldJob.status, 'queued');
+  assert.equal(currentJob.status, 'completed');
+  assert.equal(runtime.rawItemRepository.listRawItems().length, 1);
+});
+
 test('fetch job handler delays rate-limited jobs and source next fetch time', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService);

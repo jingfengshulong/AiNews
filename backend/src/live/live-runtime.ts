@@ -271,7 +271,8 @@ async function runLiveOnce({
       adapters
     }),
     limit: Math.max(readySources.length, 1),
-    now: startedAtDate
+    now: startedAtDate,
+    filter: (job) => job.payload?.runId === runId
   });
   applyFetchOutcomes({ queue, runId, outcomesBySourceId });
 
