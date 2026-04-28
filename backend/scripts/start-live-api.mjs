@@ -4,6 +4,7 @@ import { createApiServer } from '../src/api/server.ts';
 import { loadConfigFromEnvFile } from '../src/config/env.ts';
 import { createLogger } from '../src/logging/logger.ts';
 import { createLiveRuntime } from '../src/live/live-runtime.ts';
+import { createLiveIngestionScheduler } from '../src/live/live-scheduler.ts';
 
 const logger = createLogger();
 const config = await loadConfigFromEnvFile();
@@ -15,6 +16,13 @@ const runtime = await createLiveRuntime({
 });
 const sourceIds = sourceIdsFromEnv(runtime);
 const port = Number(process.env.PORT || 4100);
+const scheduler = createLiveIngestionScheduler({
+  runtime,
+  logger,
+  intervalMinutes: liveSchedulerIntervalMinutes(),
+  enabled: liveScheduledIngestionEnabled(),
+  sourceIds
+});
 
 createApiServer({
   config,
@@ -28,13 +36,18 @@ createApiServer({
     runtimeMode: config.runtimeMode,
     selectedSourceCount: sourceIds?.length
   });
-  void refreshLiveData();
+  if (liveStartupRefreshEnabled()) {
+    void refreshLiveData();
+  }
+  scheduler.start();
 });
 
 async function refreshLiveData() {
   try {
     const report = await runtime.runOnce({
-      maxItemsPerSource: liveMaxItemsPerSource(),
+      mode: 'startup',
+      incremental: false,
+      lookbackHours: liveStartupLookbackHours(),
       sourceIds
     });
     logger.info('live_refresh_completed', {
@@ -57,14 +70,38 @@ function applyLiveEnvOptions(config) {
   }
 }
 
-function liveMaxItemsPerSource() {
-  const value = Number(process.env.LIVE_MAX_ITEMS_PER_SOURCE || 0);
-  return Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
 function liveRequestTimeoutMs() {
   const value = Number(process.env.LIVE_REQUEST_TIMEOUT_MS || 0);
   return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function liveStartupRefreshEnabled() {
+  return envFlag('LIVE_STARTUP_REFRESH_ENABLED', true);
+}
+
+function liveScheduledIngestionEnabled() {
+  return envFlag('LIVE_SCHEDULED_INGESTION_ENABLED', true);
+}
+
+function liveSchedulerIntervalMinutes() {
+  return positiveNumberFromEnv('LIVE_INGESTION_INTERVAL_MINUTES', 30);
+}
+
+function liveStartupLookbackHours() {
+  return positiveNumberFromEnv('LIVE_STARTUP_LOOKBACK_HOURS', 24);
+}
+
+function positiveNumberFromEnv(name, fallback) {
+  const value = Number(process.env[name] || 0);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function envFlag(name, fallback) {
+  const value = process.env[name];
+  if (value === undefined || value === '') {
+    return fallback;
+  }
+  return !['0', 'false', 'no', 'off'].includes(String(value).toLowerCase());
 }
 
 function liveRuntimeSnapshotPath() {

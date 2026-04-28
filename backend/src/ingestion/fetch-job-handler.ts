@@ -1,5 +1,6 @@
 import { persistAdapterRecords } from './adapter-record-ingestion.ts';
 import { classifyFetchError, SourceFetchError } from './source-fetch-error.ts';
+import { filterSourceRecordsForRun, lookbackWindowStart } from './source-record-filter.ts';
 
 export function createFetchJobHandler({
   sourceService,
@@ -35,20 +36,47 @@ export function createFetchJobHandler({
       });
     }
 
-    const records = await adapter.fetchSource(source);
+    const runOptions = job.payload?.runOptions || {};
+    const records = await adapter.fetchSource(source, {
+      ...runOptions,
+      cursor: source.ingestionCursor,
+      lookbackWindowStart: lookbackWindowStart({
+        lookbackHours: runOptions.lookbackHours,
+        now
+      }),
+      now
+    });
+    const filtered = filterSourceRecordsForRun({
+      records,
+      source,
+      mode: runOptions.mode,
+      incremental: runOptions.incremental,
+      force: runOptions.force,
+      lookbackHours: runOptions.lookbackHours,
+      now
+    });
     const result = persistAdapterRecords({
       source,
-      records,
+      records: filtered.records,
       rawItemRepository,
       queue,
       fetchedAt: now
     });
     sourceService.updateHealth(source.id, { ok: true, at: now });
+    sourceService.updateIngestionCursor(source.id, {
+      records: filtered.records,
+      fetchedAt: now
+    });
+    if (source.fetchIntervalMinutes) {
+      sourceService.markFetchScheduled(source.id, new Date(new Date(now).getTime() + source.fetchIntervalMinutes * 60_000));
+    }
 
     return {
       sourceId: source.id,
       sourceType: source.sourceType,
       fetched: result.fetched,
+      received: asArray(records).length,
+      filtered: filtered.stats,
       created: result.created.length,
       duplicates: result.duplicates.length
     };
@@ -59,6 +87,13 @@ export function createFetchJobHandler({
   handler.baseBackoffMs = baseBackoffMs;
   handler.maxBackoffMs = maxBackoffMs;
   return handler;
+}
+
+function asArray(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
 }
 
 export async function processFetchJobs({ queue, handler, limit = 25, now = new Date() }) {

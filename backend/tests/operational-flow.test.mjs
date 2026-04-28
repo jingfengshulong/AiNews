@@ -82,7 +82,8 @@ test('package scripts expose local demo startup and smoke verification commands'
   assert.match(packageJson.scripts['backend:live'], /start-live-api/);
   assert.match(packageJson.scripts['backend:live:smoke'], /run-live-smoke/);
   assert.match(startLiveScript, /LIVE_SOURCE_NAMES/);
-  assert.match(startLiveScript, /LIVE_MAX_ITEMS_PER_SOURCE/);
+  assert.match(startLiveScript, /LIVE_INGESTION_INTERVAL_MINUTES/);
+  assert.match(startLiveScript, /LIVE_STARTUP_LOOKBACK_HOURS/);
   assert.match(startLiveScript, /LIVE_REQUEST_TIMEOUT_MS/);
   assert.match(startLiveScript, /LIVE_DISABLE_AI_ENRICHMENT/);
   assert.ok(

@@ -35,8 +35,8 @@ import { seedMvpSources } from '../sources/seed-sources.ts';
 import { SourceRepository } from '../sources/source-repository.ts';
 import { SourceService } from '../sources/source-service.ts';
 
-const defaultMaxItemsPerSource = 8;
 const defaultStaleAfterMs = 6 * 60 * 60 * 1000;
+const defaultStartupLookbackHours = 24;
 const supportedSourceTypes = new Set(['rss', 'atom', 'newsapi', 'arxiv', 'semantic_scholar', 'hacker_news', 'product_hunt', 'crossref']);
 const credentialOptionalSourceTypes = new Set(['semantic_scholar']);
 
@@ -47,7 +47,6 @@ export async function createLiveRuntime({
   fetchImpl = globalThis.fetch,
   articleFetcher,
   enrichmentProvider,
-  maxItemsPerSource = defaultMaxItemsPerSource,
   requestTimeoutMs = 15_000,
   staleAfterMs = defaultStaleAfterMs,
   snapshotPath,
@@ -73,6 +72,8 @@ export async function createLiveRuntime({
   const sources = sourceService.listSources();
   let lastRunReport = restored.metadata.latestRunReport || createInitialReport({ now, sources });
   let runSequence = restored.metadata.runSequence || 0;
+  let activeRun;
+  let skippedOverlapCount = restored.metadata.skippedOverlapCount || 0;
 
   const servingService = createNewsServingService({
     signalRepository,
@@ -99,8 +100,22 @@ export async function createLiveRuntime({
       return clone(lastRunReport);
     },
     async runOnce(options = {}) {
+      const runOptions = normalizeRunOptions(options);
+      if (activeRun) {
+        skippedOverlapCount += 1;
+        const report = createSkippedOverlapReport({
+          mode: runOptions.mode,
+          runSequence: runSequence + 1,
+          skippedOverlapCount,
+          now,
+          lastRunReport
+        });
+        lastRunReport = report;
+        await persistSnapshot({ snapshotPath, store, lastRunReport, runSequence, skippedOverlapCount });
+        return clone(report);
+      }
       runSequence += 1;
-      const report = await runLiveOnce({
+      activeRun = runLiveOnce({
         config,
         queue,
         sourceService,
@@ -110,20 +125,24 @@ export async function createLiveRuntime({
         signalRepository,
         topicRepository,
         scoreComponentRepository,
-        adapters: wrapAdapters(adapters || createLiveAdapters({ config, fetchImpl: liveFetchImpl, now }), {
-          maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource
-        }),
+        adapters: wrapAdapters(adapters || createLiveAdapters({ config, fetchImpl: liveFetchImpl, now })),
         articleFetcher: articleFetcher || new ArticleFetcher({ fetchImpl: liveFetchImpl }),
         enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl }),
-        maxItemsPerSource: options.maxItemsPerSource || maxItemsPerSource,
         sourceIds: options.sourceIds,
+        runOptions,
+        skippedOverlapCount,
         fetchImpl,
         runSequence,
         now
       });
-      lastRunReport = report;
-      await persistSnapshot({ snapshotPath, store, lastRunReport, runSequence });
-      return clone(report);
+      try {
+        const report = await activeRun;
+        lastRunReport = report;
+        await persistSnapshot({ snapshotPath, store, lastRunReport, runSequence, skippedOverlapCount });
+        return clone(report);
+      } finally {
+        activeRun = undefined;
+      }
     }
   };
 }
@@ -139,14 +158,15 @@ async function restoreSnapshot(snapshotPath) {
   return restoreRuntimeStore(snapshot);
 }
 
-async function persistSnapshot({ snapshotPath, store, lastRunReport, runSequence }) {
+async function persistSnapshot({ snapshotPath, store, lastRunReport, runSequence, skippedOverlapCount = 0 }) {
   if (!snapshotPath) {
     return;
   }
   await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
     metadata: {
       latestRunReport: lastRunReport,
-      runSequence
+      runSequence,
+      skippedOverlapCount
     }
   }));
 }
@@ -195,8 +215,9 @@ async function runLiveOnce({
   adapters,
   articleFetcher,
   enrichmentProvider,
-  maxItemsPerSource,
   sourceIds,
+  runOptions,
+  skippedOverlapCount,
   runSequence,
   fetchImpl,
   now
@@ -215,15 +236,26 @@ async function runLiveOnce({
     processed: 0
   }));
   const outcomesBySourceId = new Map(outcomes.map((item) => [item.sourceId, item]));
-  const readySources = outcomes
-    .filter((item) => item.status === 'ready')
-    .map((item) => sourceService.getSource(item.sourceId));
+  const readySources = [];
+  for (const outcome of outcomes) {
+    if (outcome.status !== 'ready') {
+      continue;
+    }
+    const source = sourceService.getSource(outcome.sourceId);
+    if (shouldSkipForSchedule({ source, runOptions, now: startedAtDate })) {
+      outcome.status = 'skipped';
+      outcome.reason = 'not_due';
+      continue;
+    }
+    readySources.push(source);
+  }
 
   for (const source of readySources) {
     queue.enqueue('fetch', {
       sourceId: source.id,
       sourceType: source.sourceType,
-      runId
+      runId,
+      runOptions
     }, {
       jobKey: `live:${runId}:fetch:${source.id}`,
       runAfter: startedAtDate
@@ -251,7 +283,7 @@ async function runLiveOnce({
       articleFetcher,
       articleRepository
     }),
-    limit: Math.max(readySources.length * maxItemsPerSource, 1),
+    limit: countDueQueuedJobs(queue, 'process', startedAtDate),
     now: startedAtDate
   });
   applyProcessOutcomes({ processSummary, outcomesBySourceId });
@@ -307,7 +339,7 @@ async function runLiveOnce({
       sourceService,
       provider: enrichmentProvider
     }),
-    limit: Math.max(signalRepository.listSignals().length, 1),
+    limit: countDueQueuedJobs(queue, 'enrichment', startedAtDate),
     now: startedAtDate
   });
 
@@ -317,12 +349,18 @@ async function runLiveOnce({
 
   return {
     mode: 'live',
+    runMode: runOptions.mode,
     state: runStateForReport({ completedAt, sourceOutcomeCounts }),
     runId,
     startedAt,
     completedAt,
     lastLiveFetchAt: sourceOutcomeCounts.succeeded > 0 ? completedAt : undefined,
-    maxItemsPerSource,
+    intervalMinutes: runOptions.intervalMinutes,
+    lookbackHours: runOptions.lookbackHours,
+    incremental: runOptions.incremental,
+    force: runOptions.force,
+    recovery: runOptions.recovery,
+    skippedOverlapCount,
     sources,
     sourceOutcomeCounts,
     skippedReasons: countSkippedReasons(sources),
@@ -430,17 +468,94 @@ function createLiveAdapters({ config = {}, fetchImpl = globalThis.fetch, now = (
   };
 }
 
-function wrapAdapters(adapters, { maxItemsPerSource }) {
+function wrapAdapters(adapters) {
   const wrapped = {};
   for (const [sourceType, adapter] of Object.entries(adapters || {})) {
     wrapped[sourceType] = {
-      async fetchSource(source) {
-        const records = await adapter.fetchSource(source);
-        return asArray(records).slice(0, source.fetchLimit || maxItemsPerSource);
+      async fetchSource(source, context) {
+        return asArray(await adapter.fetchSource(source, context));
       }
     };
   }
   return wrapped;
+}
+
+function normalizeRunOptions(options = {}) {
+  const mode = ['startup', 'scheduled', 'manual'].includes(options.mode) ? options.mode : 'manual';
+  const recovery = Boolean(options.recovery || options.fullWindow);
+  const force = Boolean(options.force);
+  const incremental = options.incremental !== undefined
+    ? Boolean(options.incremental)
+    : mode === 'scheduled';
+  const lookbackHours = normalizePositiveNumber(
+    options.lookbackHours,
+    mode === 'startup' ? defaultStartupLookbackHours : undefined
+  );
+  const intervalMinutes = normalizePositiveNumber(options.intervalMinutes, undefined);
+
+  return {
+    mode,
+    incremental: recovery ? false : incremental,
+    force,
+    recovery,
+    lookbackHours,
+    intervalMinutes
+  };
+}
+
+function normalizePositiveNumber(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function shouldSkipForSchedule({ source, runOptions, now }) {
+  if (runOptions.force || runOptions.mode !== 'scheduled') {
+    return false;
+  }
+  if (!source.nextFetchAt) {
+    return false;
+  }
+  return new Date(source.nextFetchAt).getTime() > new Date(now).getTime();
+}
+
+function countDueQueuedJobs(queue, lane, now) {
+  const currentTime = new Date(now).getTime();
+  return queue.list(lane).filter((job) =>
+    job.status === 'queued' &&
+    new Date(job.runAfter).getTime() <= currentTime
+  ).length;
+}
+
+function createSkippedOverlapReport({ mode, runSequence, skippedOverlapCount, now, lastRunReport }) {
+  const at = now().toISOString();
+  return {
+    mode: 'live',
+    runMode: mode,
+    state: 'skipped',
+    reason: 'overlap',
+    runId: createRunId(new Date(at), runSequence),
+    startedAt: at,
+    completedAt: at,
+    lastLiveFetchAt: lastRunReport?.lastLiveFetchAt,
+    skippedOverlapCount,
+    sourceOutcomeCounts: clone(lastRunReport?.sourceOutcomeCounts || emptyOutcomeCounts()),
+    skippedReasons: {
+      ...(lastRunReport?.skippedReasons || {}),
+      overlap: skippedOverlapCount
+    },
+    totals: clone(lastRunReport?.totals || {
+      fetched: 0,
+      processed: 0,
+      rawItems: 0,
+      articles: 0,
+      signals: 0
+    }),
+    sources: clone(lastRunReport?.sources || []),
+    pipeline: clone(lastRunReport?.pipeline || {})
+  };
 }
 
 function createLiveEnrichmentProvider({ config = {}, fetchImpl = globalThis.fetch } = {}) {
@@ -502,6 +617,8 @@ function applyFetchOutcomes({ queue, runId, outcomesBySourceId }) {
       outcome.status = 'succeeded';
       outcome.reason = undefined;
       outcome.fetched = job.result?.fetched || 0;
+      outcome.received = job.result?.received || outcome.fetched;
+      outcome.filtered = clone(job.result?.filtered);
       outcome.created = job.result?.created || 0;
       outcome.duplicates = job.result?.duplicates || 0;
       continue;

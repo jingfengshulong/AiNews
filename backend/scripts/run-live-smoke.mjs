@@ -14,7 +14,8 @@ const runtime = await createLiveRuntime({
 });
 const sourceIds = sourceIdsFromEnv(runtime);
 const report = await runtime.runOnce({
-  maxItemsPerSource: liveMaxItemsPerSource(),
+  mode: 'startup',
+  lookbackHours: liveStartupLookbackHours(),
   sourceIds
 });
 const server = createApiServer({
@@ -64,14 +65,14 @@ function applyLiveEnvOptions(config) {
   }
 }
 
-function liveMaxItemsPerSource() {
-  const value = Number(process.env.LIVE_MAX_ITEMS_PER_SOURCE || 0);
-  return Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
 function liveRequestTimeoutMs() {
   const value = Number(process.env.LIVE_REQUEST_TIMEOUT_MS || 0);
   return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function liveStartupLookbackHours() {
+  const value = Number(process.env.LIVE_STARTUP_LOOKBACK_HOURS || 0);
+  return Number.isFinite(value) && value > 0 ? value : 24;
 }
 
 function liveRuntimeSnapshotPath() {

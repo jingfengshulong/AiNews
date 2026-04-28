@@ -1,21 +1,23 @@
 import { sourceFetchErrorFromHttpResponse } from './source-fetch-error.ts';
 
 export class HackerNewsAdapter {
-  constructor({ fetchImpl = fetch, now = () => new Date(), defaultLimit = 30 } = {}) {
+  constructor({ fetchImpl = fetch, now = () => new Date() } = {}) {
     this.fetchImpl = fetchImpl;
     this.now = now;
-    this.defaultLimit = defaultLimit;
   }
 
-  async fetchSource(source) {
+  async fetchSource(source, context = {}) {
     const listUrl = source.apiEndpoint || 'https://hacker-news.firebaseio.com/v0/newstories.json';
-    const limit = source.fetchLimit || this.defaultLimit;
     const idsResponse = await this.fetchJson(listUrl);
-    const ids = asArray(idsResponse).slice(0, limit);
+    const ids = asArray(idsResponse);
     const items = [];
+    const boundary = context.lookbackWindowStart || toValidDate(context.cursor?.lastSeenPublishedAt);
 
     for (const id of ids) {
       const item = await this.fetchJson(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
+      if (boundary && item?.time && item.time * 1000 < boundary.getTime()) {
+        break;
+      }
       if (isUsefulStory(item, source.query)) {
         items.push(item);
       }
@@ -60,6 +62,14 @@ export class HackerNewsAdapter {
     }
     return response.json();
   }
+}
+
+function toValidDate(value) {
+  if (!value) {
+    return undefined;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 function isUsefulStory(item, query) {

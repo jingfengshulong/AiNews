@@ -144,6 +144,8 @@ test('live runtime restores persisted live data and latest run metadata on resta
   assert.equal(restarted.rawItemRepository.listRawItems().length, 1);
   assert.equal(restarted.articleRepository.listArticles().length, 1);
   assert.equal(restarted.sourceService.listSources().length, 1);
+  assert.equal(restarted.sourceService.listSources()[0].ingestionCursor.lastSeenPublishedAt, '2026-04-21T08:00:00.000Z');
+  assert.deepEqual(restarted.sourceService.listSources()[0].ingestionCursor.seenExternalIds, ['openai-live-1']);
   assert.equal(restarted.getLastRunReport().runId, report.runId);
   assert.equal(home.dataStatus.runId, report.runId);
   assert.equal(home.stats.visibleSignals, 1);

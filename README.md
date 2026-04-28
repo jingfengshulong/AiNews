@@ -113,6 +113,31 @@ If you do not copy the snapshot, the server can rebuild data by running:
 npm run backend:ingest:live
 ```
 
+## Live Refresh Behavior
+
+`npm run backend:live` starts the API, runs a startup catch-up refresh for the previous 24 hours, then keeps refreshing every 30 minutes while the process is alive.
+
+Useful environment variables:
+
+```env
+LIVE_STARTUP_REFRESH_ENABLED=1
+LIVE_STARTUP_LOOKBACK_HOURS=24
+LIVE_SCHEDULED_INGESTION_ENABLED=1
+LIVE_INGESTION_INTERVAL_MINUTES=30
+LIVE_RUNTIME_SNAPSHOT_PATH=.data/news-runtime.json
+LIVE_REQUEST_TIMEOUT_MS=15000
+LIVE_SOURCE_NAMES=
+```
+
+Startup and scheduled ingestion do not use a project-side item-count cap. RSS/Atom sources ingest every item currently exposed by the feed and then apply the 24-hour or cursor filter. API-backed sources use provider pagination/page-size parameters where needed, but the project treats those as page size, not as a total run limit.
+
+Manual one-shot options:
+
+```bash
+npm run backend:ingest:live -- --mode=manual --incremental
+npm run backend:ingest:live -- --mode=manual --recovery --lookback-hours=48 --force
+```
+
 ## Server Deployment
 
 On your server:

@@ -16,7 +16,7 @@ export class ArxivAdapter {
     this.maxBytes = maxBytes;
   }
 
-  async fetchSource(source) {
+  async fetchSource(source, context = {}) {
     if (!source.apiEndpoint) {
       throw new SourceFetchError(`arXiv source requires apiEndpoint: ${source.id}`, {
         category: 'configuration_error',
@@ -24,27 +24,55 @@ export class ArxivAdapter {
       });
     }
 
-    const response = await this.fetchImpl(source.apiEndpoint, {
-      headers: {
-        Accept: 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.2',
-        'User-Agent': 'AI-News/0.1 (+https://localhost)'
-      }
-    });
+    const url = new URL(source.apiEndpoint);
+    const pageSize = positiveInteger(source.fetchLimit, 100);
+    if (!url.searchParams.has('max_results')) {
+      url.searchParams.set('max_results', String(pageSize));
+    }
+    let start = nonNegativeInteger(url.searchParams.get('start'), 0);
+    const boundary = contextBoundary(context);
+    const shouldPaginate = Boolean(boundary);
+    const records = [];
 
-    if (response.status < 200 || response.status >= 300) {
-      throw sourceFetchErrorFromHttpResponse('arXiv', response);
+    while (true) {
+      if (shouldPaginate || url.searchParams.has('start')) {
+        url.searchParams.set('start', String(start));
+      }
+      const response = await this.fetchImpl(url.toString(), {
+        headers: {
+          Accept: 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.2',
+          'User-Agent': 'AI-News/0.1 (+https://localhost)'
+        }
+      });
+
+      if (response.status < 200 || response.status >= 300) {
+        throw sourceFetchErrorFromHttpResponse('arXiv', response);
+      }
+
+      const xml = await readLimitedText(response, this.maxBytes);
+      const pageRecords = parseArxivFeed({
+        xml,
+        source,
+        fetchedAt: this.now(),
+        responseMeta: {
+          status: response.status,
+          contentType: getHeader(response.headers, 'content-type'),
+          start,
+          pageSize
+        }
+      });
+      records.push(...pageRecords);
+
+      if (!shouldPaginate || pageRecords.length < pageSize) {
+        break;
+      }
+      if (allReliableDatesBefore(pageRecords, boundary)) {
+        break;
+      }
+      start += pageRecords.length;
     }
 
-    const xml = await readLimitedText(response, this.maxBytes);
-    return parseArxivFeed({
-      xml,
-      source,
-      fetchedAt: this.now(),
-      responseMeta: {
-        status: response.status,
-        contentType: getHeader(response.headers, 'content-type')
-      }
-    });
+    return records;
   }
 }
 
@@ -177,4 +205,34 @@ function getHeader(headers, name) {
     return headers.get(name) || undefined;
   }
   return headers[name] || headers[name.toLowerCase()];
+}
+
+function positiveInteger(value, fallback) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function nonNegativeInteger(value, fallback) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) && number >= 0 ? number : fallback;
+}
+
+function contextBoundary(context = {}) {
+  return toValidDate(context.lookbackWindowStart) || toValidDate(context.cursor?.lastSeenPublishedAt);
+}
+
+function allReliableDatesBefore(records, boundary) {
+  if (!boundary || records.length === 0) {
+    return false;
+  }
+  const dates = records.map((record) => toValidDate(record.publishedAt));
+  return dates.every(Boolean) && dates.every((date) => date.getTime() < boundary.getTime());
+}
+
+function toValidDate(value) {
+  if (!value) {
+    return undefined;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }

@@ -28,6 +28,7 @@ export class SourceService {
       usagePolicy: { ...input.usagePolicy },
       enabled: input.enabled !== false,
       nextFetchAt: input.nextFetchAt || now,
+      ingestionCursor: normalizeIngestionCursor(input.ingestionCursor),
       health: {
         lastSuccessfulAt: undefined,
         lastFailureAt: undefined,
@@ -46,11 +47,11 @@ export class SourceService {
     if (!source) {
       throw new Error(`Source not found: ${id}`);
     }
-    return source;
+    return ensureSourceDefaults(source);
   }
 
   listSources() {
-    return this.repository.list();
+    return this.repository.list().map(ensureSourceDefaults);
   }
 
   listEnabledSources() {
@@ -69,7 +70,14 @@ export class SourceService {
 
   updateSource(id, patch) {
     return this.repository.update(id, (source) => {
-      const candidate = { ...source, ...patch, updatedAt: new Date().toISOString() };
+      const candidate = ensureSourceDefaults({
+        ...source,
+        ...patch,
+        ingestionCursor: patch.ingestionCursor !== undefined
+          ? normalizeIngestionCursor(patch.ingestionCursor)
+          : normalizeIngestionCursor(source.ingestionCursor),
+        updatedAt: new Date().toISOString()
+      });
       validateSourceInput(candidate);
       return candidate;
     });
@@ -115,10 +123,37 @@ export class SourceService {
 
   markFetchScheduled(id, nextFetchAt) {
     return this.repository.update(id, (source) => ({
-      ...source,
+      ...ensureSourceDefaults(source),
       nextFetchAt: toIso(nextFetchAt),
       updatedAt: new Date().toISOString()
     }));
+  }
+
+  updateIngestionCursor(id, { records = [], fetchedAt = new Date() } = {}) {
+    return this.repository.update(id, (source) => {
+      const normalized = ensureSourceDefaults(source);
+      const previous = normalized.ingestionCursor;
+      const latestPublishedAt = latestIsoDate([
+        previous.lastSeenPublishedAt,
+        ...records.map((record) => record.publishedAt).filter(Boolean)
+      ]);
+      const seenExternalIds = Array.from(new Set([
+        ...asArray(previous.seenExternalIds).filter(Boolean).map(String),
+        ...records.map((record) => record.externalId).filter(Boolean).map(String)
+      ]));
+      const at = toIso(fetchedAt);
+
+      return {
+        ...normalized,
+        ingestionCursor: {
+          lastSuccessfulFetchAt: at,
+          lastSeenPublishedAt: latestPublishedAt,
+          seenExternalIds,
+          updatedAt: at
+        },
+        updatedAt: new Date().toISOString()
+      };
+    });
   }
 }
 
@@ -167,4 +202,57 @@ function validateUsagePolicy(policy) {
 
 function toIso(value) {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+export function ensureSourceDefaults(source) {
+  if (!source) {
+    return source;
+  }
+  return {
+    ...source,
+    ingestionCursor: normalizeIngestionCursor(source.ingestionCursor)
+  };
+}
+
+export function normalizeIngestionCursor(cursor = {}) {
+  return {
+    lastSuccessfulFetchAt: toOptionalIso(cursor.lastSuccessfulFetchAt),
+    lastSeenPublishedAt: toOptionalIso(cursor.lastSeenPublishedAt),
+    seenExternalIds: Array.from(new Set(asArray(cursor.seenExternalIds).filter(Boolean).map(String))),
+    updatedAt: toOptionalIso(cursor.updatedAt)
+  };
+}
+
+function latestIsoDate(values) {
+  let latest;
+  for (const value of values) {
+    const date = toValidDate(value);
+    if (!date) {
+      continue;
+    }
+    if (!latest || date.getTime() > latest.getTime()) {
+      latest = date;
+    }
+  }
+  return latest ? latest.toISOString() : undefined;
+}
+
+function toOptionalIso(value) {
+  const date = toValidDate(value);
+  return date ? date.toISOString() : undefined;
+}
+
+function toValidDate(value) {
+  if (!value) {
+    return undefined;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function asArray(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
 }

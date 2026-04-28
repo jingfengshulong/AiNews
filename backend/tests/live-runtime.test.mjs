@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { loadConfig } from '../src/config/env.ts';
 import { SourceFetchError } from '../src/ingestion/source-fetch-error.ts';
 import { createLiveRuntime, evaluateLiveSourceReadiness } from '../src/live/live-runtime.ts';
+import { createLiveIngestionScheduler } from '../src/live/live-scheduler.ts';
 
 const usagePolicy = {
   allowFullText: false,
@@ -53,7 +54,7 @@ function adapterRecord(sourceRecord, patch = {}) {
     externalId: patch.externalId || `${sourceRecord.id}-item`,
     title: patch.title || 'OpenAI agent reliability platform enters enterprise preview',
     url: patch.url || `https://example.com/${sourceRecord.id}-item`,
-    publishedAt: patch.publishedAt || '2026-04-21T08:00:00.000Z',
+    publishedAt: Object.hasOwn(patch, 'publishedAt') ? patch.publishedAt : '2026-04-21T08:00:00.000Z',
     author: patch.author || sourceRecord.name,
     summary: patch.summary || 'A source item about agent reliability infrastructure.',
     categories: patch.categories || ['AI Agent'],
@@ -192,6 +193,194 @@ test('live runtime processes mocked fetched records into visible ranked signals 
   assert.ok(home.leadSignal.title.includes('OpenAI agent reliability platform'));
   assert.ok(home.leadSignal.sourceCount >= 2);
   assert.ok(home.stats.visibleSignals >= 1);
+});
+
+test('live runtime does not truncate fetched records by maxItemsPerSource', async () => {
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    trustScore: 0.95
+  }]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => [
+          adapterRecord(sourceRecord, { externalId: 'item-1', title: 'OpenAI agent reliability platform one' }),
+          adapterRecord(sourceRecord, { externalId: 'item-2', title: 'OpenAI agent reliability platform two' }),
+          adapterRecord(sourceRecord, { externalId: 'item-3', title: 'OpenAI agent reliability platform three' })
+        ]
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const report = await runtime.runOnce({ maxItemsPerSource: 1 });
+
+  assert.equal(report.totals.fetched, 3);
+  assert.equal(report.totals.processed, 3);
+  assert.equal(runtime.rawItemRepository.listRawItems().length, 3);
+});
+
+test('startup catch-up filters reliable records outside the default 24-hour lookback', async () => {
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    trustScore: 0.95
+  }]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => [
+          adapterRecord(sourceRecord, { externalId: 'recent', publishedAt: '2026-04-21T08:00:00.000Z' }),
+          adapterRecord(sourceRecord, { externalId: 'old', publishedAt: '2026-04-19T08:00:00.000Z' }),
+          adapterRecord(sourceRecord, { externalId: 'missing-date', publishedAt: undefined })
+        ]
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const report = await runtime.runOnce({ mode: 'startup' });
+  const externalIds = runtime.rawItemRepository.listRawItems().map((item) => item.externalId).sort();
+
+  assert.deepEqual(externalIds, ['missing-date', 'recent']);
+  assert.equal(report.sources[0].filtered.skippedByLookback, 1);
+});
+
+test('scheduled runs use cursor state to process only newly observed items', async () => {
+  let currentNow = new Date('2026-04-21T12:00:00.000Z');
+  let run = 0;
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    fetchIntervalMinutes: 5,
+    trustScore: 0.95
+  }]);
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => {
+          run += 1;
+          if (run === 1) {
+            return [adapterRecord(sourceRecord, { externalId: 'first', publishedAt: '2026-04-21T11:55:00.000Z' })];
+          }
+          return [
+            adapterRecord(sourceRecord, { externalId: 'first', publishedAt: '2026-04-21T11:55:00.000Z' }),
+            adapterRecord(sourceRecord, { externalId: 'second', publishedAt: '2026-04-21T12:04:00.000Z' })
+          ];
+        }
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => currentNow
+  });
+
+  await runtime.runOnce({ mode: 'startup' });
+  currentNow = new Date('2026-04-21T12:06:00.000Z');
+  const report = await runtime.runOnce({ mode: 'scheduled' });
+  const cursor = runtime.sourceService.listSources()[0].ingestionCursor;
+
+  assert.equal(report.totals.rawItems, 2);
+  assert.equal(report.sources[0].fetched, 1);
+  assert.equal(report.sources[0].filtered.skippedByCursor, 1);
+  assert.equal(cursor.lastSeenPublishedAt, '2026-04-21T12:04:00.000Z');
+  assert.deepEqual(cursor.seenExternalIds.sort(), ['first', 'second']);
+});
+
+test('live runtime single-flight guard skips overlapping runs', async () => {
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    trustScore: 0.95
+  }]);
+  let releaseFetch;
+  const fetchGate = new Promise((resolve) => {
+    releaseFetch = resolve;
+  });
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => {
+          await fetchGate;
+          return [adapterRecord(sourceRecord)];
+        }
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const first = runtime.runOnce({ mode: 'startup' });
+  const skipped = await runtime.runOnce({ mode: 'scheduled' });
+  releaseFetch();
+  const completed = await first;
+
+  assert.equal(skipped.state, 'skipped');
+  assert.equal(skipped.reason, 'overlap');
+  assert.equal(skipped.skippedOverlapCount, 1);
+  assert.equal(completed.sourceOutcomeCounts.succeeded, 1);
+});
+
+test('live ingestion scheduler runs scheduled incremental mode and exposes interval state', async () => {
+  const calls = [];
+  const runtime = {
+    async runOnce(options) {
+      calls.push(options);
+      return {
+        runId: 'live_scheduler_test',
+        runMode: options.mode,
+        state: 'live',
+        skippedOverlapCount: 0,
+        sourceOutcomeCounts: { succeeded: 1 },
+        totals: { fetched: 1 }
+      };
+    }
+  };
+  const logs = [];
+  const scheduler = createLiveIngestionScheduler({
+    runtime,
+    logger: { info: (event, payload) => logs.push({ event, payload }), error: () => {} },
+    intervalMinutes: 30,
+    sourceIds: ['src_0001'],
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  scheduler.start();
+  await scheduler.runNow();
+  const state = scheduler.getState();
+  scheduler.stop();
+
+  assert.equal(state.running, true);
+  assert.equal(state.intervalMinutes, 30);
+  assert.deepEqual(calls[0], {
+    mode: 'scheduled',
+    incremental: true,
+    intervalMinutes: 30,
+    sourceIds: ['src_0001']
+  });
+  assert.ok(logs.some((entry) => entry.event === 'live_scheduled_refresh_completed'));
 });
 
 test('live runtime schedules process jobs from fetch time instead of wall clock time', async () => {
