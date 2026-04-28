@@ -5,15 +5,16 @@
 
 ## 2. Source Cursor State
 
-- [ ] 2.1 Extend source records to persist ingestion cursor state including last successful fetch time, last seen published timestamp, and bounded recent external IDs.
+- [ ] 2.1 Extend source records to persist ingestion cursor state including last successful fetch time, last seen published timestamp, and seen external IDs needed for duplicate avoidance.
 - [ ] 2.2 Restore cursor defaults safely for existing runtime snapshots that do not contain cursor fields.
 - [ ] 2.3 Update source repository/service helpers to read and update cursor state after successful fetches while preserving cursor state after failures.
 
 ## 3. Incremental Filtering
 
-- [ ] 3.1 Add a source-record filtering utility that applies startup lookback windows, incremental cursor checks, recent external-ID checks, and existing per-source item limits.
-- [ ] 3.2 Integrate filtering into live ingestion before raw-item persistence and article extraction.
-- [ ] 3.3 Preserve existing raw-item, article, and signal deduplication as the final duplicate safety net.
+- [ ] 3.1 Add a source-record filtering utility that applies startup lookback windows, incremental cursor checks, and external-ID checks without imposing project-side item-count caps.
+- [ ] 3.2 Ensure paginated adapters keep reading within the time/cursor scope until records leave scope, pages are exhausted, or upstream throttling prevents further reads.
+- [ ] 3.3 Integrate filtering into live ingestion before raw-item persistence and article extraction.
+- [ ] 3.4 Preserve existing raw-item, article, and signal deduplication as the final duplicate safety net.
 
 ## 4. Scheduler Runtime
 
@@ -24,7 +25,7 @@
 
 ## 5. One-Shot Commands
 
-- [ ] 5.1 Update `run-live-ingestion.mjs` to support incremental, full-window, force, and lookback options without breaking existing usage.
+- [ ] 5.1 Update `run-live-ingestion.mjs` to support incremental, recovery, force, and lookback options without breaking existing usage.
 - [ ] 5.2 Ensure manual one-shot runs can be used safely for recovery without corrupting source cursor state.
 
 ## 6. Tests and Verification
@@ -34,4 +35,4 @@
 - [ ] 6.3 Add tests proving repeated runs do not create duplicate raw items, articles, signals, or enrichment jobs.
 - [ ] 6.4 Add tests proving source cursor state persists through runtime snapshot save/restore.
 - [ ] 6.5 Add tests proving the scheduler interval and single-flight overlap guard work.
-- [ ] 6.6 Run `npm run backend:test` and a live dry-run or bounded ingestion smoke check before marking the change complete.
+- [ ] 6.6 Run `npm run backend:test` and a live scheduler/ingestion smoke check before marking the change complete.

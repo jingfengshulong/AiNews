@@ -49,8 +49,8 @@ The system SHALL treat scheduled ingestion runs as incremental runs that add new
 - **THEN** the system SHALL avoid creating duplicate raw items, article candidates, signals, or enrichment jobs
 
 #### Scenario: Source returns new item after cursor
-- **WHEN** a scheduled ingestion run receives a source item newer than the source cursor or not present in the recent external-ID cursor
-- **THEN** the system SHALL persist and process that item through the normal ingestion pipeline
+- **WHEN** a scheduled ingestion run receives source items newer than the source cursor or not present in the external-ID cursor
+- **THEN** the system SHALL persist and process every eligible item through the normal ingestion pipeline without applying a project-side item-count cap
 
 #### Scenario: Source returns old item before cursor
 - **WHEN** a scheduled ingestion run receives a source item older than the source cursor and already represented in recent external IDs

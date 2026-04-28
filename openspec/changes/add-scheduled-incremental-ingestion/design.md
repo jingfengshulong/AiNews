@@ -1,6 +1,6 @@
 ## Context
 
-The live API currently starts the HTTP server and immediately runs one live ingestion pass in the background. That pass fetches the latest bounded window from every ready source, deduplicates by `sourceId + externalId`, processes newly seen raw items, reclusters signals, enriches pending signals, and persists `.data/news-runtime.json`.
+The live API currently starts the HTTP server and immediately runs one live ingestion pass in the background. That pass fetches the latest available records from every ready source, deduplicates by `sourceId + externalId`, processes newly seen raw items, reclusters signals, enriches pending signals, and persists `.data/news-runtime.json`.
 
 This is enough for local testing, but it leaves server deployments with two rough edges: data becomes stale after startup unless an external cron is configured, and startup refresh does not express a clear 24-hour catch-up policy. The existing raw-item and article indexes already prevent most duplicate records, so the change should extend the runtime orchestration instead of replacing the ingestion pipeline.
 
@@ -9,7 +9,8 @@ This is enough for local testing, but it leaves server deployments with two roug
 **Goals:**
 
 - Add a built-in scheduler that runs live ingestion every 30 minutes by default.
-- Keep startup serving fast while running a bounded 24-hour catch-up ingestion in the background by default.
+- Keep startup serving fast while running a 24-hour catch-up ingestion in the background by default.
+- Ensure startup and scheduled ingestion do not stop after an arbitrary item count; they should process all records available within the configured time or cursor scope.
 - Make recurring refreshes incremental by using per-source cursor state and existing dedupe indexes.
 - Persist cursor state in the runtime snapshot so restarts do not lose incremental position.
 - Provide environment controls for interval, startup refresh, startup lookback, and manual one-shot behavior.
@@ -17,9 +18,9 @@ This is enough for local testing, but it leaves server deployments with two roug
 **Non-Goals:**
 
 - Do not replace `.data/news-runtime.json` with PostgreSQL in this change.
-- Do not implement deep historical backfill or arbitrary pagination for every source.
+- Do not implement deep historical backfill outside the configured startup lookback or incremental cursor scope.
 - Do not change frontend API response shapes.
-- Do not make AI enrichment run forever in a separate worker; enrichment remains part of the bounded ingestion pass.
+- Do not make AI enrichment run forever in a separate worker; enrichment remains part of each ingestion pass.
 
 ## Decisions
 
@@ -29,15 +30,17 @@ The live API process will own a scheduler that starts after the server listens. 
 
 Alternative considered: rely only on Linux cron. Cron remains a useful operational fallback, but it does not satisfy the requirement that the project has its own timed execution capability.
 
-### Keep startup refresh asynchronous and bounded to 24 hours
+### Keep startup refresh asynchronous and scoped to 24 hours
 
-Startup should still start serving before waiting on network calls. The startup pass will be classified as a catch-up run with a default 24-hour lookback window. Sources should filter fetched items to those published within the window when reliable published timestamps exist; items without reliable timestamps can still pass through dedupe, but should be bounded by per-source item limits.
+Startup should still start serving before waiting on network calls. The startup pass will be classified as a catch-up run with a default 24-hour lookback window. Sources should filter fetched items to those published within the window when reliable published timestamps exist; items without reliable timestamps can still pass through dedupe and raw-item duplicate checks.
+
+Startup catch-up is time-scoped, not count-scoped. RSS/Atom sources can only process the items currently exposed by the feed, but they should not truncate those feed items by a project-side count. Paginated APIs should continue fetching pages until records fall outside the lookback window, the source is exhausted, or upstream throttling prevents further reads.
 
 Alternative considered: disable startup refresh by default and require the scheduler to wait 30 minutes. That makes first boot look stale and does not meet the startup catch-up requirement.
 
 ### Track source cursors using published time and recent external IDs
 
-Each source will persist cursor state containing at least `lastSuccessfulFetchAt`, `lastSeenPublishedAt`, and a bounded set of recent `externalId` values. Scheduled runs use that state to process only items newer than the cursor or not previously seen. Existing raw-item dedupe remains the final safety net.
+Each source will persist cursor state containing at least `lastSuccessfulFetchAt`, `lastSeenPublishedAt`, and seen `externalId` values needed to avoid reprocessing items when timestamps are missing or unreliable. Scheduled runs use that state to process every item newer than the cursor or not previously seen. Existing raw-item dedupe remains the final safety net.
 
 Alternative considered: only rely on raw-item dedupe. That prevents duplicate records, but still wastes fetch, article extraction, and API time by repeatedly processing old feed windows.
 
@@ -53,7 +56,7 @@ Alternative considered: create a separate scheduler pipeline. That would duplica
 - In-process scheduling can overlap if a run takes longer than 30 minutes -> Use a single-flight guard so the next tick is skipped while a run is active.
 - Startup refresh plus scheduler tick can double-run -> Start scheduler timing after startup run is scheduled and use the same single-flight guard.
 - Server restarts may happen during a write -> Continue using atomic snapshot writes and update cursor state only after source outcomes are known.
-- Filtering too aggressively could miss corrected items -> Treat cursor filtering as an optimization before processing, not a replacement for raw-item dedupe; allow manual full-window runs for recovery.
+- Filtering too aggressively could miss corrected items -> Treat cursor filtering as an optimization before processing, not a replacement for raw-item dedupe; allow manual recovery runs.
 
 ## Migration Plan
 

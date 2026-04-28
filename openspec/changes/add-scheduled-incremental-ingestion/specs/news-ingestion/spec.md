@@ -30,11 +30,11 @@ The system SHALL support incremental live ingestion runs that use persisted sour
 
 #### Scenario: Incremental run has no cursor
 - **WHEN** a live ingestion run is marked incremental and a source has no persisted cursor state
-- **THEN** the system SHALL process the bounded fetched source window and initialize cursor state after successful processing
+- **THEN** the system SHALL process all fetched source items within the current time or cursor scope and initialize cursor state after successful processing
 
 #### Scenario: Manual one-shot run
 - **WHEN** an operator runs the live one-shot ingestion command manually
-- **THEN** the system SHALL continue to support a bounded live ingestion run and SHALL allow configuration to use incremental filtering or a full current-window scan
+- **THEN** the system SHALL continue to support live ingestion and SHALL allow configuration to use incremental filtering or a recovery scan
 
 ### Requirement: Source window filtering
 The system SHALL support run-level time windows for fetched source records before raw-item persistence.
@@ -45,8 +45,12 @@ The system SHALL support run-level time windows for fetched source records befor
 
 #### Scenario: Item lacks reliable published time
 - **WHEN** a fetched item lacks a reliable published timestamp
-- **THEN** the system SHALL keep the item eligible for raw-item deduplication within the bounded source window rather than dropping it solely because the timestamp is missing
+- **THEN** the system SHALL keep the item eligible for raw-item deduplication within the fetched source data rather than dropping it solely because the timestamp is missing
 
-#### Scenario: Source returns more than run limit
-- **WHEN** a source adapter returns more records than the configured run item limit
-- **THEN** the system SHALL apply the source or run item limit before processing and SHALL report the bounded count in run metadata
+#### Scenario: Source returns many eligible records
+- **WHEN** a source adapter returns many records within the startup lookback or incremental cursor scope
+- **THEN** the system SHALL process every eligible record and SHALL NOT truncate processing by an arbitrary item-count cap
+
+#### Scenario: Paginated source remains in scope
+- **WHEN** a source adapter supports pagination and returned records remain within the requested time or cursor scope
+- **THEN** the system SHALL continue requesting pages until records leave scope, the source is exhausted, or upstream throttling prevents further reads

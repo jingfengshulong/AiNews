@@ -5,7 +5,7 @@ The system SHALL persist per-source ingestion cursor state that can be used to i
 
 #### Scenario: Source fetch succeeds with records
 - **WHEN** a source fetch succeeds and produces one or more source records
-- **THEN** the system SHALL update that source's cursor state with the latest reliable published timestamp, the fetch completion time, and a bounded set of recently seen external IDs
+- **THEN** the system SHALL update that source's cursor state with the latest reliable published timestamp, the fetch completion time, and seen external IDs needed to avoid duplicate processing
 
 #### Scenario: Source fetch succeeds with no records
 - **WHEN** a source fetch succeeds and produces no source records
