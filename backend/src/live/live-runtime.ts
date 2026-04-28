@@ -821,7 +821,15 @@ function withRequestTimeout(fetchImpl, timeoutMs) {
 
   return async function fetchWithRequestTimeout(url, options = {}) {
     const controller = new AbortController();
+    let timeoutCleared = false;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const clearRequestTimeout = () => {
+      if (timeoutCleared) {
+        return;
+      }
+      timeoutCleared = true;
+      clearTimeout(timeout);
+    };
     const upstreamSignal = options.signal;
     if (upstreamSignal?.aborted) {
       controller.abort();
@@ -830,14 +838,44 @@ function withRequestTimeout(fetchImpl, timeoutMs) {
     }
 
     try {
-      return await fetchImpl(url, {
+      const response = await fetchImpl(url, {
         ...options,
         signal: controller.signal
       });
-    } finally {
-      clearTimeout(timeout);
+      return wrapResponseBodyTimeout(response, clearRequestTimeout);
+    } catch (error) {
+      clearRequestTimeout();
+      throw error;
     }
   };
+}
+
+const timedBodyReaders = new Set(['arrayBuffer', 'blob', 'formData', 'json', 'text']);
+
+function wrapResponseBodyTimeout(response, clearRequestTimeout) {
+  if (!response || typeof response !== 'object') {
+    clearRequestTimeout();
+    return response;
+  }
+
+  return new Proxy(response, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (timedBodyReaders.has(property) && typeof value === 'function') {
+        return async (...args) => {
+          try {
+            return await value.apply(target, args);
+          } finally {
+            clearRequestTimeout();
+          }
+        };
+      }
+      if (typeof value === 'function') {
+        return value.bind(target);
+      }
+      return value;
+    }
+  });
 }
 
 function isStale(value, now, staleAfterMs) {

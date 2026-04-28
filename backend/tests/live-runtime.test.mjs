@@ -456,6 +456,46 @@ test('live runtime passes abort signals to source fetches for request timeout co
   assert.equal(report.totals.processed, 1);
 });
 
+test('live runtime request timeout also covers stalled response body reads', async () => {
+  const seedSources = createSeedSources([
+    {
+      name: 'Stalled Live RSS',
+      sourceType: 'rss',
+      family: 'technology_media',
+      feedUrl: 'https://example.com/stalled.xml',
+      trustScore: 0.7
+    }
+  ]);
+  let bodyAbortObserved = false;
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    requestTimeoutMs: 20,
+    fetchImpl: async (_url, options = {}) => ({
+      status: 200,
+      headers: { get: () => 'application/rss+xml' },
+      text: async () => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          bodyAbortObserved = true;
+          reject(new Error('stalled body aborted'));
+        }, { once: true });
+      })
+    }),
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider,
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const startedAt = Date.now();
+  const report = await runtime.runOnce();
+
+  assert.equal(bodyAbortObserved, true);
+  assert.ok(Date.now() - startedAt < 1000);
+  assert.equal(report.sourceOutcomeCounts.succeeded, 0);
+  assert.equal(report.pipeline.fetch.retried, 1);
+  assert.equal(report.totals.processed, 0);
+});
+
 test('live runtime retries fallback enrichment after an AI provider becomes available', async () => {
   const seedSources = createSeedSources([
     {
