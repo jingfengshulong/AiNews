@@ -822,13 +822,19 @@ function withRequestTimeout(fetchImpl, timeoutMs) {
   return async function fetchWithRequestTimeout(url, options = {}) {
     const controller = new AbortController();
     let timeoutCleared = false;
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let timeoutId;
+    const timeoutPromise = new Promise((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(createTimeoutError(timeoutMs));
+      }, timeoutMs);
+    });
     const clearRequestTimeout = () => {
       if (timeoutCleared) {
         return;
       }
       timeoutCleared = true;
-      clearTimeout(timeout);
+      clearTimeout(timeoutId);
     };
     const upstreamSignal = options.signal;
     if (upstreamSignal?.aborted) {
@@ -838,11 +844,11 @@ function withRequestTimeout(fetchImpl, timeoutMs) {
     }
 
     try {
-      const response = await fetchImpl(url, {
+      const response = await Promise.race([fetchImpl(url, {
         ...options,
         signal: controller.signal
-      });
-      return wrapResponseBodyTimeout(response, clearRequestTimeout);
+      }), timeoutPromise]);
+      return wrapResponseBodyTimeout(response, clearRequestTimeout, (promise) => Promise.race([promise, timeoutPromise]));
     } catch (error) {
       clearRequestTimeout();
       throw error;
@@ -852,7 +858,13 @@ function withRequestTimeout(fetchImpl, timeoutMs) {
 
 const timedBodyReaders = new Set(['arrayBuffer', 'blob', 'formData', 'json', 'text']);
 
-function wrapResponseBodyTimeout(response, clearRequestTimeout) {
+function createTimeoutError(timeoutMs) {
+  const error = new Error(`Request timed out after ${timeoutMs}ms`);
+  error.name = 'AbortError';
+  return error;
+}
+
+function wrapResponseBodyTimeout(response, clearRequestTimeout, withTimeout) {
   if (!response || typeof response !== 'object') {
     clearRequestTimeout();
     return response;
@@ -864,7 +876,7 @@ function wrapResponseBodyTimeout(response, clearRequestTimeout) {
       if (timedBodyReaders.has(property) && typeof value === 'function') {
         return async (...args) => {
           try {
-            return await value.apply(target, args);
+            return await withTimeout(value.apply(target, args));
           } finally {
             clearRequestTimeout();
           }
