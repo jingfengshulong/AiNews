@@ -1,4 +1,4 @@
-export function persistAdapterRecords({ source, records, rawItemRepository, queue, fetchedAt = new Date() }) {
+export function persistAdapterRecords({ source, records, rawItemRepository, queue, fetchedAt = new Date(), runId }) {
   const created = [];
   const duplicates = [];
 
@@ -27,7 +27,7 @@ export function persistAdapterRecords({ source, records, rawItemRepository, queu
     }
 
     created.push(rawItem);
-    queue.enqueue('process', { rawItemId: rawItem.id, sourceId: source.id }, {
+    queue.enqueue('process', { rawItemId: rawItem.id, sourceId: source.id, runId }, {
       jobKey: `process:${rawItem.id}`,
       runAfter: fetchedAt
     });

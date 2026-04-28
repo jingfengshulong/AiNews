@@ -32,6 +32,33 @@ function createRuntime() {
   };
 }
 
+test('process job processing can target current live run without claiming stale process jobs', async () => {
+  const runtime = createRuntime();
+  runtime.queue.enqueue('process', { rawItemId: 'raw_old', sourceId: 'src_1', runId: 'old-run' }, {
+    jobKey: 'process:old',
+    runAfter: new Date('2026-04-21T08:59:00.000Z')
+  });
+  const current = runtime.queue.enqueue('process', { rawItemId: 'raw_current', sourceId: 'src_1', runId: 'current-run' }, {
+    jobKey: 'process:current',
+    runAfter: new Date('2026-04-21T08:59:00.000Z')
+  });
+
+  const summary = await processQueuedJobs({
+    queue: runtime.queue,
+    lane: 'process',
+    handler: async (job) => ({ rawItemId: job.payload.rawItemId }),
+    limit: 1,
+    now: new Date('2026-04-21T09:00:00.000Z'),
+    filter: (job) => job.payload?.runId === 'current-run'
+  });
+  const oldJob = runtime.queue.list('process').find((job) => job.payload.runId === 'old-run');
+  const currentJob = runtime.queue.list('process').find((job) => job.id === current.id);
+
+  assert.equal(summary.completed, 1);
+  assert.equal(oldJob.status, 'queued');
+  assert.equal(currentJob.status, 'completed');
+});
+
 test('process job handler turns RSS raw items into article candidates and marks jobs complete', async () => {
   const html = await readFile(new URL('./fixtures/sample-article.html', import.meta.url), 'utf8');
   const runtime = createRuntime();

@@ -125,6 +125,7 @@ test('fetch job processing can target the current live run without claiming stal
   assert.equal(oldJob.status, 'queued');
   assert.equal(currentJob.status, 'completed');
   assert.equal(runtime.rawItemRepository.listRawItems().length, 1);
+  assert.equal(runtime.queue.list('process')[0].payload.runId, 'current-run');
 });
 
 test('fetch job handler delays rate-limited jobs and source next fetch time', async () => {

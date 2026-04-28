@@ -60,7 +60,8 @@ export function createFetchJobHandler({
       records: filtered.records,
       rawItemRepository,
       queue,
-      fetchedAt: now
+      fetchedAt: now,
+      runId: job.payload?.runId
     });
     sourceService.updateHealth(source.id, { ok: true, at: now });
     sourceService.updateIngestionCursor(source.id, {

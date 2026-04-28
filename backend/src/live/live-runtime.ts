@@ -285,7 +285,8 @@ async function runLiveOnce({
       articleRepository
     }),
     limit: countDueQueuedJobs(queue, 'process', startedAtDate),
-    now: startedAtDate
+    now: startedAtDate,
+    filter: (job) => job.payload?.runId === runId
   });
   applyProcessOutcomes({ processSummary, outcomesBySourceId });
 

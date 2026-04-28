@@ -91,13 +91,13 @@ export async function processRawItemJob({ job, rawItemRepository, sourceService,
   };
 }
 
-export async function processQueuedJobs({ queue, lane = 'process', handler, limit = 25, now = new Date() }) {
+export async function processQueuedJobs({ queue, lane = 'process', handler, limit = 25, now = new Date(), filter } = {}) {
   const results = [];
   let completed = 0;
   let failed = 0;
 
   for (let index = 0; index < limit; index += 1) {
-    const job = queue.claimNext(lane, { now });
+    const job = queue.claimNext(lane, { now, filter });
     if (!job) {
       break;
     }
