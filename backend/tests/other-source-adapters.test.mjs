@@ -164,6 +164,47 @@ test('Hacker News adapter fetches story ids, filters by query, and maps communit
   assert.equal(records[0].rawPayload.discussionUrl, 'https://news.ycombinator.com/item?id=101');
 });
 
+test('Hacker News adapter limits scanned story ids by source fetchLimit', async () => {
+  const requests = [];
+  const responses = new Map([
+    ['https://hacker-news.firebaseio.com/v0/newstories.json', [101, 102, 103]],
+    ['https://hacker-news.firebaseio.com/v0/item/101.json', {
+      id: 101,
+      type: 'story',
+      by: 'pg',
+      time: 1776765600,
+      title: 'Show HN: AI launch',
+      url: 'https://example.com/ai'
+    }]
+  ]);
+  const adapter = new HackerNewsAdapter({
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return {
+        status: 200,
+        headers: new Map([['content-type', 'application/json']]),
+        json: async () => responses.get(url)
+      };
+    },
+    now: () => new Date('2026-04-21T10:30:00.000Z')
+  });
+
+  const records = await adapter.fetchSource({
+    id: 'src_hn',
+    sourceType: 'hacker_news',
+    language: 'en',
+    apiEndpoint: 'https://hacker-news.firebaseio.com/v0/newstories.json',
+    query: 'AI',
+    fetchLimit: 1
+  });
+
+  assert.equal(records.length, 1);
+  assert.deepEqual(requests, [
+    'https://hacker-news.firebaseio.com/v0/newstories.json',
+    'https://hacker-news.firebaseio.com/v0/item/101.json'
+  ]);
+});
+
 test('Semantic Scholar adapter supports public access and maps paper metadata to raw records', async () => {
   const body = await readFile(new URL('./fixtures/sample-semantic-scholar.json', import.meta.url), 'utf8');
   const requests = [];

@@ -97,7 +97,7 @@ function asArray(value) {
   return Array.isArray(value) ? value : [value];
 }
 
-export async function processFetchJobs({ queue, handler, limit = 25, now = new Date(), filter } = {}) {
+export async function processFetchJobs({ queue, handler, limit = 25, now = new Date(), filter, onProgress } = {}) {
   const results = [];
   let completed = 0;
   let retried = 0;
@@ -109,11 +109,28 @@ export async function processFetchJobs({ queue, handler, limit = 25, now = new D
       break;
     }
 
+    const source = sourceForJob(handler, job);
+    emitProgress(onProgress, 'live_fetch_job_started', {
+      jobId: job.id,
+      sourceId: job.payload?.sourceId,
+      sourceName: source?.name,
+      sourceType: source?.sourceType
+    });
     try {
       const result = await handler(job, { now });
       await queue.complete(job.id, result);
       completed += 1;
       results.push({ jobId: job.id, status: 'completed', result });
+      emitProgress(onProgress, 'live_fetch_job_completed', {
+        jobId: job.id,
+        sourceId: result.sourceId,
+        sourceName: source?.name,
+        sourceType: result.sourceType,
+        fetched: result.fetched,
+        received: result.received,
+        created: result.created,
+        duplicates: result.duplicates
+      });
     } catch (error) {
       const classified = classifyFetchError(error);
       const sourceId = job.payload?.sourceId;
@@ -138,6 +155,14 @@ export async function processFetchJobs({ queue, handler, limit = 25, now = new D
         });
         retried += 1;
         results.push({ jobId: job.id, status: 'retried', errorCategory: classified.category, runAfter: runAfter.toISOString() });
+        emitProgress(onProgress, 'live_fetch_job_retried', {
+          jobId: job.id,
+          sourceId,
+          sourceName: source?.name,
+          sourceType: source?.sourceType,
+          errorCategory: classified.category,
+          runAfter: runAfter.toISOString()
+        });
         continue;
       }
 
@@ -147,6 +172,13 @@ export async function processFetchJobs({ queue, handler, limit = 25, now = new D
       });
       failed += 1;
       results.push({ jobId: job.id, status: 'failed', errorCategory: classified.category, error: classified.message });
+      emitProgress(onProgress, 'live_fetch_job_failed', {
+        jobId: job.id,
+        sourceId,
+        sourceName: source?.name,
+        sourceType: source?.sourceType,
+        errorCategory: classified.category
+      });
     }
   }
 
@@ -156,6 +188,29 @@ export async function processFetchJobs({ queue, handler, limit = 25, now = new D
     failed,
     results
   };
+}
+
+function sourceForJob(handler, job) {
+  const sourceId = job.payload?.sourceId;
+  if (!sourceId || !handler.sourceService) {
+    return undefined;
+  }
+  try {
+    return handler.sourceService.getSource(sourceId);
+  } catch {
+    return undefined;
+  }
+}
+
+function emitProgress(onProgress, event, fields = {}) {
+  if (typeof onProgress !== 'function') {
+    return;
+  }
+  try {
+    onProgress(event, fields);
+  } catch {
+    // Diagnostics must not change fetch behavior.
+  }
 }
 
 function retryTime({ error, job, handler, now }) {

@@ -2,6 +2,7 @@ export function createLiveIngestionScheduler({
   runtime,
   logger,
   intervalMinutes = 30,
+  enrichmentLimit,
   enabled = true,
   sourceIds,
   now = () => new Date()
@@ -14,12 +15,16 @@ export function createLiveIngestionScheduler({
   async function tick() {
     tickCount += 1;
     try {
-      const report = await runtime.runOnce({
+      const runOptions = {
         mode: 'scheduled',
         incremental: true,
         intervalMinutes,
         sourceIds
-      });
+      };
+      if (enrichmentLimit !== undefined) {
+        runOptions.enrichmentLimit = enrichmentLimit;
+      }
+      const report = await runtime.runOnce(runOptions);
       logger?.info?.('live_scheduled_refresh_completed', {
         runId: report.runId,
         runMode: report.runMode,

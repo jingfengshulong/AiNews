@@ -9,7 +9,7 @@ export class HackerNewsAdapter {
   async fetchSource(source, context = {}) {
     const listUrl = source.apiEndpoint || 'https://hacker-news.firebaseio.com/v0/newstories.json';
     const idsResponse = await this.fetchJson(listUrl);
-    const ids = asArray(idsResponse);
+    const ids = asArray(idsResponse).slice(0, positiveInteger(source.fetchLimit, asArray(idsResponse).length));
     const items = [];
     const boundary = context.lookbackWindowStart || toValidDate(context.cursor?.lastSeenPublishedAt);
 
@@ -86,6 +86,11 @@ function isUsefulStory(item, query) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function positiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
 }
 
 function cleanSummary(value) {

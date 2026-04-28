@@ -12,7 +12,8 @@ applyLiveEnvOptions(config);
 const runtime = await createLiveRuntime({
   config,
   requestTimeoutMs: liveRequestTimeoutMs(),
-  snapshotPath: liveRuntimeSnapshotPath()
+  snapshotPath: liveRuntimeSnapshotPath(),
+  onProgress: (event, fields = {}) => logger.info(event, fields)
 });
 const sourceIds = sourceIdsFromEnv(runtime);
 const port = Number(process.env.PORT || 4100);
@@ -20,6 +21,7 @@ const scheduler = createLiveIngestionScheduler({
   runtime,
   logger,
   intervalMinutes: liveSchedulerIntervalMinutes(),
+  enrichmentLimit: liveScheduledEnrichmentLimit(),
   enabled: liveScheduledIngestionEnabled(),
   sourceIds
 });
@@ -47,6 +49,7 @@ async function refreshLiveData() {
     const report = await runtime.runOnce({
       mode: 'startup',
       incremental: false,
+      enrichmentLimit: liveStartupEnrichmentLimit(),
       lookbackHours: liveStartupLookbackHours(),
       sourceIds
     });
@@ -91,9 +94,26 @@ function liveStartupLookbackHours() {
   return positiveNumberFromEnv('LIVE_STARTUP_LOOKBACK_HOURS', 24);
 }
 
+function liveStartupEnrichmentLimit() {
+  return nonNegativeIntegerFromEnv('LIVE_STARTUP_ENRICHMENT_LIMIT', 0);
+}
+
+function liveScheduledEnrichmentLimit() {
+  return nonNegativeIntegerFromEnv('LIVE_SCHEDULED_ENRICHMENT_LIMIT', 20);
+}
+
 function positiveNumberFromEnv(name, fallback) {
   const value = Number(process.env[name] || 0);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function nonNegativeIntegerFromEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue === '') {
+    return fallback;
+  }
+  const value = Number(rawValue);
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
 function envFlag(name, fallback) {

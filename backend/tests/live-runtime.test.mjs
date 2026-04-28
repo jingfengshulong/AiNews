@@ -196,6 +196,45 @@ test('live runtime processes mocked fetched records into visible ranked signals 
   assert.ok(home.stats.visibleSignals >= 1);
 });
 
+test('live runtime can limit synchronous enrichment work per run', async () => {
+  const seedSources = createSeedSources([{
+    name: 'OpenAI Live RSS',
+    sourceType: 'rss',
+    family: 'company_announcement',
+    feedUrl: 'https://example.com/openai.xml',
+    trustScore: 0.95
+  }]);
+  let generated = 0;
+  const runtime = await createLiveRuntime({
+    config: loadConfig({ RUNTIME_MODE: 'test' }),
+    seedSources,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => [1, 2, 3].map((index) => adapterRecord(sourceRecord, {
+          externalId: `openai-live-${index}`,
+          title: `OpenAI agent platform ${index} reaches live preview`,
+          url: `https://example.com/openai-live-${index}`
+        }))
+      }
+    },
+    articleFetcher: createArticleFetcher(),
+    enrichmentProvider: {
+      ...enrichmentProvider,
+      async generate(context) {
+        generated += 1;
+        return enrichmentProvider.generate(context);
+      }
+    },
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const report = await runtime.runOnce({ enrichmentLimit: 1 });
+
+  assert.equal(generated, 1);
+  assert.equal(report.pipeline.enrichment.completed, 1);
+  assert.equal(runtime.queue.list('enrichment').filter((job) => job.status === 'queued').length, 2);
+});
+
 test('live runtime does not truncate fetched records by maxItemsPerSource', async () => {
   const seedSources = createSeedSources([{
     name: 'OpenAI Live RSS',

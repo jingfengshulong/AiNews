@@ -50,6 +50,7 @@ export async function createLiveRuntime({
   requestTimeoutMs = 15_000,
   staleAfterMs = defaultStaleAfterMs,
   snapshotPath,
+  onProgress,
   now = () => new Date()
 } = {}) {
   const liveFetchImpl = withRequestTimeout(fetchImpl, requestTimeoutMs);
@@ -132,6 +133,7 @@ export async function createLiveRuntime({
         runOptions,
         skippedOverlapCount,
         fetchImpl: liveFetchImpl,
+        onProgress,
         runSequence,
         now
       });
@@ -220,11 +222,18 @@ async function runLiveOnce({
   skippedOverlapCount,
   runSequence,
   fetchImpl,
+  onProgress,
   now
 }) {
   const startedAtDate = now();
   const startedAt = startedAtDate.toISOString();
   const runId = createRunId(startedAtDate, runSequence);
+  emitProgress(onProgress, 'live_run_started', {
+    runId,
+    runMode: runOptions.mode,
+    lookbackHours: runOptions.lookbackHours,
+    incremental: runOptions.incremental
+  });
   const readiness = evaluateLiveSourceReadiness({
     sources: sourceService.listSources(),
     config,
@@ -249,6 +258,11 @@ async function runLiveOnce({
     }
     readySources.push(source);
   }
+  emitProgress(onProgress, 'live_sources_ready', {
+    runId,
+    readySourceCount: readySources.length,
+    skippedSourceCount: outcomes.filter((outcome) => outcome.status === 'skipped').length
+  });
 
   for (const source of readySources) {
     queue.enqueue('fetch', {
@@ -262,6 +276,10 @@ async function runLiveOnce({
     });
   }
 
+  emitProgress(onProgress, 'live_fetch_started', {
+    runId,
+    jobCount: readySources.length
+  });
   const fetchSummary = await processFetchJobs({
     queue,
     handler: createFetchJobHandler({
@@ -272,10 +290,22 @@ async function runLiveOnce({
     }),
     limit: Math.max(readySources.length, 1),
     now: startedAtDate,
-    filter: (job) => job.payload?.runId === runId
+    filter: (job) => job.payload?.runId === runId,
+    onProgress
   });
   applyFetchOutcomes({ queue, runId, outcomesBySourceId });
+  emitProgress(onProgress, 'live_fetch_completed', {
+    runId,
+    completed: fetchSummary.completed,
+    failed: fetchSummary.failed,
+    fetched: Array.from(outcomesBySourceId.values()).reduce((total, outcome) => total + (outcome.fetched || 0), 0)
+  });
 
+  const processJobCount = countDueQueuedJobs(queue, 'process', startedAtDate);
+  emitProgress(onProgress, 'live_process_started', {
+    runId,
+    jobCount: processJobCount
+  });
   const processSummary = await processQueuedJobs({
     queue,
     handler: createProcessJobHandler({
@@ -289,9 +319,16 @@ async function runLiveOnce({
     filter: (job) => job.payload?.runId === runId
   });
   applyProcessOutcomes({ processSummary, outcomesBySourceId });
+  emitProgress(onProgress, 'live_process_completed', {
+    runId,
+    completed: processSummary.completed,
+    failed: processSummary.failed
+  });
 
   // AI relevance filter: for general tech sources, use AI to judge if articles are AI-related
+  emitProgress(onProgress, 'live_relevance_started', { runId });
   await applyRelevanceFilter({ articleRepository, sourceService, config, fetchImpl });
+  emitProgress(onProgress, 'live_relevance_completed', { runId });
 
   const qualitySummary = new ArticleQualityService({
     articleRepository,
@@ -326,6 +363,10 @@ async function runLiveOnce({
     scoreComponentRepository,
     now
   }).scoreSignals();
+  emitProgress(onProgress, 'live_scoring_completed', {
+    runId,
+    signals: signalRepository.listSignals().length
+  });
 
   const currentRunSignalIds = signalIdsForProcessedArticles({ signalRepository, processSummary });
   enqueuePendingEnrichmentJobs({
@@ -336,6 +377,14 @@ async function runLiveOnce({
     signalIds: runOptions.recovery ? undefined : currentRunSignalIds,
     runId
   });
+  const enrichmentJobCount = countDueQueuedJobs(queue, 'enrichment', startedAtDate);
+  const enrichmentLimit = runOptions.enrichmentLimit ?? enrichmentJobCount;
+  emitProgress(onProgress, 'live_enrichment_started', {
+    runId,
+    jobCount: enrichmentJobCount,
+    currentRunSignalCount: currentRunSignalIds.length,
+    limit: enrichmentLimit
+  });
   const enrichmentSummary = await processEnrichmentJobs({
     queue,
     handler: createEnrichmentJobHandler({
@@ -344,14 +393,28 @@ async function runLiveOnce({
       sourceService,
       provider: enrichmentProvider
     }),
-    limit: countDueQueuedJobs(queue, 'enrichment', startedAtDate),
+    limit: enrichmentLimit,
     now: startedAtDate,
     filter: (job) => job.payload?.runId === runId
+  });
+  emitProgress(onProgress, 'live_enrichment_completed', {
+    runId,
+    completed: enrichmentSummary.completed,
+    failed: enrichmentSummary.failed
   });
 
   const completedAt = now().toISOString();
   const sources = Array.from(outcomesBySourceId.values());
   const sourceOutcomeCounts = countSourceOutcomes(sources);
+  emitProgress(onProgress, 'live_run_completed', {
+    runId,
+    sourceOutcomeCounts,
+    totals: {
+      rawItems: rawItemRepository.listRawItems().length,
+      articles: articleRepository.listArticles().length,
+      signals: signalRepository.listSignals().length
+    }
+  });
 
   return {
     mode: 'live',
@@ -363,6 +426,7 @@ async function runLiveOnce({
     lastLiveFetchAt: sourceOutcomeCounts.succeeded > 0 ? completedAt : undefined,
     intervalMinutes: runOptions.intervalMinutes,
     lookbackHours: runOptions.lookbackHours,
+    enrichmentLimit: runOptions.enrichmentLimit,
     incremental: runOptions.incremental,
     force: runOptions.force,
     recovery: runOptions.recovery,
@@ -388,6 +452,17 @@ async function runLiveOnce({
       enrichment: enrichmentSummary
     }
   };
+}
+
+function emitProgress(onProgress, event, fields = {}) {
+  if (typeof onProgress !== 'function') {
+    return;
+  }
+  try {
+    onProgress(event, fields);
+  } catch {
+    // Progress hooks are diagnostic only and must not affect ingestion.
+  }
 }
 
 function evaluateSourceReadiness({ source, config }) {
@@ -490,6 +565,7 @@ function normalizeRunOptions(options = {}) {
   const mode = ['startup', 'scheduled', 'manual'].includes(options.mode) ? options.mode : 'manual';
   const recovery = Boolean(options.recovery || options.fullWindow);
   const force = Boolean(options.force);
+  const enrichmentLimit = normalizeNonNegativeNumber(options.enrichmentLimit, undefined);
   const incremental = options.incremental !== undefined
     ? Boolean(options.incremental)
     : mode === 'scheduled';
@@ -505,7 +581,8 @@ function normalizeRunOptions(options = {}) {
     force,
     recovery,
     lookbackHours,
-    intervalMinutes
+    intervalMinutes,
+    enrichmentLimit
   };
 }
 
@@ -515,6 +592,14 @@ function normalizePositiveNumber(value, fallback) {
   }
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function normalizeNonNegativeNumber(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : fallback;
 }
 
 function shouldSkipForSchedule({ source, runOptions, now }) {
