@@ -127,11 +127,11 @@ export async function createLiveRuntime({
         scoreComponentRepository,
         adapters: wrapAdapters(adapters || createLiveAdapters({ config, fetchImpl: liveFetchImpl, now })),
         articleFetcher: articleFetcher || new ArticleFetcher({ fetchImpl: liveFetchImpl }),
-        enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl }),
+        enrichmentProvider: enrichmentProvider || createLiveEnrichmentProvider({ config, fetchImpl: liveFetchImpl }),
         sourceIds: options.sourceIds,
         runOptions,
         skippedOverlapCount,
-        fetchImpl,
+        fetchImpl: liveFetchImpl,
         runSequence,
         now
       });

@@ -38,6 +38,7 @@ function createSeedSources(records) {
     apiEndpoint: record.apiEndpoint,
     query: record.query,
     fetchLimit: record.fetchLimit,
+    filterKeywords: record.filterKeywords,
     language: record.language || 'en',
     fetchIntervalMinutes: record.fetchIntervalMinutes || 60,
     trustScore: record.trustScore || 0.8,
@@ -386,11 +387,12 @@ test('live ingestion scheduler runs scheduled incremental mode and exposes inter
 test('live runtime schedules process jobs from fetch time instead of wall clock time', async () => {
   const seedSources = createSeedSources([
     {
-      name: 'OpenAI Live RSS',
+      name: 'AI Media Live RSS',
       sourceType: 'rss',
-      family: 'company_announcement',
-      feedUrl: 'https://example.com/openai.xml',
-      trustScore: 0.95
+      family: 'technology_media',
+      feedUrl: 'https://example.com/ai-media.xml',
+      trustScore: 0.8,
+      filterKeywords: ['AI']
     }
   ]);
   const runtime = await createLiveRuntime({
@@ -494,6 +496,56 @@ test('live runtime request timeout also covers stalled response body reads', asy
   assert.equal(report.sourceOutcomeCounts.succeeded, 0);
   assert.equal(report.pipeline.fetch.retried, 1);
   assert.equal(report.totals.processed, 0);
+});
+
+test('live runtime applies request timeout to AI enrichment requests', async () => {
+  const seedSources = createSeedSources([
+    {
+      name: 'OpenAI Live RSS',
+      sourceType: 'rss',
+      family: 'company_announcement',
+      feedUrl: 'https://example.com/openai.xml',
+      trustScore: 0.95
+    }
+  ]);
+  let enrichmentAbortObserved = false;
+  const runtime = await createLiveRuntime({
+    config: loadConfig({
+      RUNTIME_MODE: 'test',
+      AI_ENRICHMENT_API_KEY: 'test-key',
+      AI_ENRICHMENT_MODEL: 'test-model',
+      AI_ENRICHMENT_BASE_URL: 'https://ai.example/v1'
+    }),
+    seedSources,
+    requestTimeoutMs: 20,
+    adapters: {
+      rss: {
+        fetchSource: async (sourceRecord) => [adapterRecord(sourceRecord)]
+      }
+    },
+    fetchImpl: async (_url, options = {}) => new Promise((_resolve, reject) => {
+      if (options.signal?.aborted) {
+        enrichmentAbortObserved = true;
+        reject(new Error('stalled AI request aborted'));
+        return;
+      }
+      options.signal.addEventListener('abort', () => {
+        enrichmentAbortObserved = true;
+        reject(new Error('stalled AI request aborted'));
+      }, { once: true });
+    }),
+    articleFetcher: createArticleFetcher(),
+    now: () => new Date('2026-04-21T12:00:00.000Z')
+  });
+
+  const startedAt = Date.now();
+  const report = await runtime.runOnce();
+
+  assert.equal(enrichmentAbortObserved, true);
+  assert.ok(Date.now() - startedAt < 1000);
+  assert.equal(report.sourceOutcomeCounts.succeeded, 1);
+  assert.equal(report.totals.processed, 1);
+  assert.equal(report.pipeline.enrichment.failed, 1);
 });
 
 test('live runtime retries fallback enrichment after an AI provider becomes available', async () => {
