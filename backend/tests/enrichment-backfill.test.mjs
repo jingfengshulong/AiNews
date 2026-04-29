@@ -6,6 +6,7 @@ import {
   enqueueEnrichmentBackfillJobs,
   isStaleEnrichmentSignal
 } from '../src/signal-processing/enrichment-backfill-service.ts';
+import { processEnrichmentJobs } from '../src/signal-processing/enrichment-job-handler.ts';
 import { InMemoryStore } from '../src/db/in-memory-store.ts';
 import { InMemoryQueue } from '../src/queue/in-memory-queue.ts';
 import { SignalRepository } from '../src/signal-processing/signal-repository.ts';
@@ -141,6 +142,51 @@ test('backfill status filter accepts failed signals', () => {
   });
 
   assert.deepEqual(result.candidates.map((signal) => signal.id), [failed.id]);
+});
+
+test('backfill processing can be scoped to the jobs queued by the current run', async () => {
+  const runtime = createRuntime();
+  const staleQueued = createSignal(runtime.signalRepository, {
+    title: 'Old queued signal',
+    signalScore: 99,
+    enrichmentStatus: 'pending'
+  });
+  const failed = createSignal(runtime.signalRepository, {
+    title: 'Failed signal',
+    signalScore: 80,
+    aiBrief: freshBrief(),
+    keyPoints: [
+      { text: 'source summary available', sourceIds: ['src_1'] },
+      { text: 'waiting for refreshed enrichment', sourceIds: ['src_1'] }
+    ],
+    enrichmentStatus: 'failed',
+    enrichmentMeta: { enrichmentVersion: currentEnrichmentVersion, errorCategory: 'enrichment_provider_failed' }
+  });
+  const oldJob = runtime.queue.enqueue('enrichment', { signalId: staleQueued.id }, {
+    jobKey: `enrichment:${staleQueued.id}`,
+    runAfter: new Date('2026-04-27T08:00:00.000Z')
+  });
+
+  const backfill = enqueueEnrichmentBackfillJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    statuses: 'failed',
+    limit: 1,
+    now: new Date('2026-04-27T09:00:00.000Z')
+  });
+  const backfillJobIds = new Set(backfill.jobs.map((job) => job.id));
+  const summary = await processEnrichmentJobs({
+    queue: runtime.queue,
+    handler: async (job) => ({ signalId: job.payload.signalId }),
+    limit: backfillJobIds.size,
+    now: new Date('2026-04-27T09:00:00.000Z'),
+    filter: (job) => backfillJobIds.has(job.id)
+  });
+
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.results[0].result.signalId, failed.id);
+  assert.equal(runtime.queue.list('enrichment').find((job) => job.id === oldJob.id).status, 'queued');
+  assert.equal(runtime.queue.list('enrichment').find((job) => backfillJobIds.has(job.id)).status, 'completed');
 });
 
 function createSignalRecord(patch) {

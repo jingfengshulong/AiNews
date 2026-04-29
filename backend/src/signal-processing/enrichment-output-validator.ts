@@ -16,7 +16,7 @@ export function validateEnrichmentOutput(output, context) {
   if (chineseCharCount(normalized.aiBrief) < 100) {
     errors.push('AI brief is too short');
   }
-  if (wordCount(normalized.aiBrief) > 90 || visibleLength(normalized.aiBrief) > 220) {
+  if (wordCount(normalized.aiBrief) > 90 || visibleLength(normalized.aiBrief) > 280) {
     errors.push('AI brief is too long');
   }
   if (normalized.keyPoints.length === 0 || normalized.keyPoints.length > 6) {

@@ -346,6 +346,47 @@ test('fallback enrichment uses article context instead of generic source boilerp
   assert.match(pointText, /WinNexO|多模态|语义模型|Agent Runtime/);
 });
 
+test('fallback enrichment extracts concrete model release details from article text', () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: '雷峰网 Leiphone',
+    family: 'technology_media',
+    trustScore: 0.74,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_sensenova_u1',
+    sourceId: source.id,
+    title: '全面开源！商汤日日新SenseNova U1发布，迈向模型理解生成统一时代',
+    excerpt: '商汤开源 SenseNova U1，开启多模态新范式。',
+    textForAI: [
+      '今天，商汤科技正式发布并开源日日新SenseNova U1 系列原生理解生成统一模型。',
+      '它基于 NEO-unify 架构，在单一模型架构上统一了多模态理解、推理与生成，并重新构建统一表征空间。',
+      '本次开源发布的是 SenseNova U1 Lite，包含 SenseNova-U1-8B-MoT 和 SenseNova-U1-A3B-MoT 两个规格。',
+      '项目提供 GitHub 和 Hugging Face 开源入口，并宣称在图像理解、图像生成与视觉推理基准上达到同量级开源 SOTA。',
+      'SenseNova U1 还强调连续性图文创作输出，用单次单模型调用保持图文交错内容的一致上下文。'
+    ].join(' '),
+    contentHash: '9'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  const fallback = createFallbackEnrichmentOutput({
+    signal,
+    articles: [{ ...article, role: 'lead' }],
+    sources: [source]
+  });
+  const combined = [fallback.aiBrief, ...fallback.keyPoints.map((point) => point.text)].join(' ');
+
+  assert.match(combined, /SenseNova U1|NEO-unify|统一表征空间/);
+  assert.match(combined, /8B-MoT|A3B-MoT|GitHub|Hugging Face|SOTA/);
+  assert.doesNotMatch(fallback.aiBrief, /主题线索仍有限/);
+  assert.doesNotMatch(fallback.aiBrief, /架构弱。$/);
+  assert.doesNotMatch(fallback.aiBrief, /；$/);
+  assert.ok(fallback.keyPoints.length >= 3);
+});
+
 test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {
@@ -422,7 +463,7 @@ test('enrichment validation rejects overlong unattributed output', async () => {
     queue: runtime.queue,
     handler: createHandler(runtime, {
       generate: async () => ({
-        aiBrief: '这'.repeat(260),
+        aiBrief: '这'.repeat(320),
         keyPoints: [{ text: '这个要点没有任何来源引用。', sourceIds: [] }],
         timeline: [],
         sourceMix: [],

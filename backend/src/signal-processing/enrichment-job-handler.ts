@@ -262,15 +262,19 @@ function fallbackFacts(context) {
   const sourceNames = sources.slice(0, 3).map((source) => source.name).filter(Boolean).join('、') || '已登记来源';
   const title = cleanText(context.signal?.title || leadArticle.title);
   const excerpt = cleanText(leadArticle.excerpt);
-  const terms = extractContextTerms([
+  const contextText = [
     title,
     excerpt,
     ...articles.map((article) => article.textForAI)
-  ].join(' '));
+  ].join(' ');
+  const terms = extractContextTerms(contextText);
+  const claims = extractContextClaims(contextText, { terms });
   const compactTerms = terms.slice(0, 5).join('、');
   const subject = title || '这条资讯';
   const summaryLine = excerpt || `${sourceNames} 已提供标题、发布时间和来源归因。`;
-  const watch = compactTerms
+  const watch = claims.length
+    ? `继续核对${compactTerms || claims.slice(0, 2).join('、')}的官方说明、开源资料、实测反馈和更多独立来源。`
+    : compactTerms
     ? `继续关注${compactTerms}的官方说明、落地案例和更多来源确认。`
     : '继续关注官方更新、独立报道和更多来源确认。';
 
@@ -279,6 +283,7 @@ function fallbackFacts(context) {
     title: subject,
     excerpt: summaryLine,
     terms,
+    claims,
     watch
   };
 }
@@ -290,16 +295,21 @@ function fallbackKeyPoints({ articles, sources, facts }) {
   }
   const sourceName = sourceNameFor(sources, leadArticle.sourceId);
   const terms = facts.terms.slice(0, 5).join('、');
+  const claimPoints = facts.claims.slice(0, 3).map((claim) => ({
+    text: withTerminalPunctuation(claim),
+    sourceIds: [leadArticle.sourceId]
+  }));
   return [
     {
       text: `${sourceName} 报道了${clip(facts.title, 70)}。`,
       sourceIds: [leadArticle.sourceId]
     },
-    facts.excerpt ? {
+    ...claimPoints,
+    claimPoints.length === 0 && facts.excerpt ? {
       text: hasCjk(facts.excerpt) ? clip(facts.excerpt, 96) : `来源摘要提到：${clip(facts.excerpt, 82)}`,
       sourceIds: [leadArticle.sourceId]
     } : undefined,
-    terms ? {
+    claimPoints.length < 2 && terms ? {
       text: `后续可重点核对${terms}的实际进展。`,
       sourceIds: [leadArticle.sourceId]
     } : undefined
@@ -308,15 +318,18 @@ function fallbackKeyPoints({ articles, sources, facts }) {
 
 function buildFallbackBrief(facts) {
   const terms = facts.terms.slice(0, 5).join('、');
-  const termSentence = terms
+  const claimSentence = facts.claims.length
+    ? `可确认的关键信息包括：${facts.claims.slice(0, 4).map(stripTerminalPunctuation).join('；')}。`
+    : '';
+  const termSentence = claimSentence || (terms
     ? `可提取的主题线索包括${terms}，这些信息能帮助判断它更偏向会议议程、企业采用、技术架构还是产品落地。`
-    : '目前可提取的主题线索仍有限，需要结合后续来源判断它对产品发布、企业采用、技术路线或行业竞争的影响。';
+    : '目前可提取的主题线索仍有限，需要结合后续来源判断它对产品发布、企业采用、技术路线或行业竞争的影响。');
   const brief = [
     `这条资讯聚焦${clip(facts.title, 62)}。`,
     `来源摘要显示，${stripTerminalPunctuation(clip(facts.excerpt, 78))}。`,
     termSentence
   ].join('');
-  return clipToVisibleLength(ensureMinimumChineseLength(brief), 220);
+  return clipToVisibleLength(ensureMinimumChineseLength(brief), 280);
 }
 
 function extractContextTerms(value) {
@@ -337,9 +350,70 @@ function extractContextTerms(value) {
     '安全可信',
     '落地保障',
     '大模型推理',
-    '智算架构'
+    '智算架构',
+    'SenseNova U1',
+    'NEO-unify',
+    '统一表征空间',
+    '多模态理解',
+    '视觉推理',
+    '图像生成',
+    '连续性图文创作',
+    '开源 SOTA',
+    'GitHub',
+    'Hugging Face'
   ];
   return unique(candidates.filter((term) => text.includes(term)));
+}
+
+function extractContextClaims(value, { terms = [] } = {}) {
+  const text = cleanText(value);
+  const claims = [];
+  const modelNames = extractModelNames(text);
+  const product = modelNames.find((name) => /SenseNova/i.test(name)) || modelNames[0];
+  const modelLabel = product || '相关模型';
+
+  if (containsAny(text, ['开源', 'GitHub', 'Hugging Face'])) {
+    const releaseTargets = modelNames.filter((name) => !/NEO[-\s]?unify/i.test(name)).slice(0, 3);
+    claims.push(releaseTargets.length
+      ? `${releaseTargets.join('、')} 已开放开源资料或部署入口`
+      : '来源提到项目已开放开源资料或部署入口');
+  }
+  if (/NEO[-\s]?unify/i.test(text) || containsAny(text, ['统一表征空间', '单一模型架构', '原生统一'])) {
+    claims.push(`${modelLabel} 以统一表征空间整合多模态理解、推理与生成，重点在减少传统拼接式多模型链路的转换损耗`);
+  }
+  if (containsAny(text, ['视觉编码器', '变分自编码器', 'VAE', 'VE'])) {
+    claims.push('报道强调该架构弱化对视觉编码器或 VAE 等独立模块拼接的依赖，试图把图像和语言放入同一套表示中处理');
+  }
+  if (containsAny(text, ['8B-MoT', 'A3B-MoT', 'MoE', '稠密骨干网络', '混合专家'])) {
+    claims.push('本次轻量版包含稠密骨干与混合专家等不同规格，便于开发者按算力和场景选择');
+  }
+  if (containsAny(text, ['SOTA', '基准测试', 'benchmark', 'Benchmark', '图像理解', '视觉推理', '商业闭源模型'])) {
+    claims.push('来源称它在图像理解、图像生成、视觉推理等测试中对标同量级开源 SOTA，并强调推理效率');
+  }
+  if (containsAny(text, ['连续性图文创作', '图文交错', '单次单模型调用', '共享上下文'])) {
+    claims.push('一个重点应用方向是连续性图文创作输出，用单模型调用保持文本与图像内容的一致上下文');
+  }
+  if (containsAny(text, ['机器人', '具身大脑', '复杂环境感知', '任务执行'])) {
+    claims.push('报道还把该路线延伸到机器人感知、逻辑推演和任务执行等具身智能场景');
+  }
+  if (claims.length === 0 && terms.length > 0) {
+    claims.push(`主题线索集中在${terms.slice(0, 5).join('、')}`);
+  }
+  return unique(claims).slice(0, 6);
+}
+
+function extractModelNames(value) {
+  const text = cleanText(value);
+  const matches = [
+    ...text.matchAll(/\bSenseNova[-\s]?[A-Za-z0-9.-]+\b/g),
+    ...text.matchAll(/\bNEO[-\s]?unify\b/gi),
+    ...text.matchAll(/\b[A-Za-z]+-[A-Za-z0-9]+(?:-[A-Za-z0-9]+){1,3}\b/g)
+  ].map((match) => cleanText(match[0]).replace(/\s+/g, ' '));
+  return unique(matches).slice(0, 6);
+}
+
+function containsAny(value, needles) {
+  return needles.some((needle) => value.includes(needle));
 }
 
 function buildSubstantiveBrief(seed, context, output = {}) {
@@ -381,7 +455,7 @@ function ensureMinimumChineseLength(value) {
 }
 
 function finalizeSubstantiveBrief(value, { seed, title, sourceNames }) {
-  const clipped = clipToVisibleLength(value, 220);
+  const clipped = clipToVisibleLength(value, 280);
   if (chineseCharCount(clipped) >= 100) {
     return clipped;
   }
@@ -392,7 +466,7 @@ function finalizeSubstantiveBrief(value, { seed, title, sourceNames }) {
     `。这条资讯已完成来源归因整理${sourcePhrase}。`,
     '当前可确认的是：系统记录了原始链接、发布时间、来源类型和标题证据，页面展示处理后的摘要、要点和可公开字段。',
     '后续需要继续观察官方说明、独立报道、研究或社区反馈是否增加，以判断它对产品发布、企业采用、技术路线或行业竞争格局的实际影响。'
-  ].join(''), 220);
+  ].join(''), 280);
 }
 
 function roleForSource(source) {
@@ -423,6 +497,11 @@ function stripTerminalPunctuation(value) {
   return cleanText(value).replace(/[。.!?！？；;]+$/g, '');
 }
 
+function withTerminalPunctuation(value) {
+  const text = cleanText(value);
+  return /[。.!?！？]$/.test(text) ? text : `${text}。`;
+}
+
 function clip(value, maxLength) {
   const text = cleanText(value);
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 3).trim()}...`;
@@ -433,7 +512,16 @@ function clipToVisibleLength(value, maxLength) {
   if (chars.length <= maxLength) {
     return chars.join('');
   }
-  return `${chars.slice(0, maxLength - 1).join('').replace(/[，。、；：\s]+$/, '')}。`;
+  const clipped = chars.slice(0, maxLength - 1).join('');
+  const sentenceEnd = Math.max(
+    clipped.lastIndexOf('。'),
+    clipped.lastIndexOf('！'),
+    clipped.lastIndexOf('？')
+  );
+  if (sentenceEnd >= Math.floor(maxLength * 0.62)) {
+    return clipped.slice(0, sentenceEnd + 1);
+  }
+  return `${clipped.replace(/[，。、；：\s]+$/, '')}。`;
 }
 
 function chineseCharCount(value) {

@@ -58,17 +58,25 @@ if (args.dryRun) {
 
 const config = await loadConfigFromEnvFile();
 const provider = createProvider({ config, timeoutMs: args.timeoutMs });
-const enrichmentSummary = await processEnrichmentJobs({
-  queue,
-  handler: createEnrichmentJobHandler({
-    signalRepository,
-    articleRepository,
-    sourceService,
-    provider
-  }),
-  limit: args.processLimit || Math.max(backfill.queued, 1),
-  now
-});
+const backfillJobIds = new Set((backfill.jobs || []).map((job) => job.id));
+const enrichmentSummary = backfillJobIds.size > 0
+  ? await processEnrichmentJobs({
+      queue,
+      handler: createEnrichmentJobHandler({
+        signalRepository,
+        articleRepository,
+        sourceService,
+        provider
+      }),
+      limit: args.processLimit || backfillJobIds.size,
+      now,
+      filter: (job) => backfillJobIds.has(job.id)
+    })
+  : {
+      completed: 0,
+      failed: 0,
+      results: []
+    };
 
 await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
   metadata: {
