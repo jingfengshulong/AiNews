@@ -44,7 +44,7 @@ Product-facing APIs must not include:
 - source API keys
 - raw payloads
 - backend-only `textForAI`
-- copied long article passages from restricted sources
+- backend-only full article payloads
 
 ## Development Fixtures
 

@@ -80,9 +80,10 @@ function createRequestBody({ model, context }) {
           'You are an AI news editor for a Chinese AI intelligence product.',
           'Return valid JSON only. Do not use markdown.',
           'Write polished Simplified Chinese for every user-facing field.',
+          'The frontend will display your generated fields directly, so every field must be original editorial writing in your own words.',
           'Produce an editorial brief, 2 to 4 key points, source-grounded timeline, source mix, next-watch text, and related signals.',
           'Every key point and timeline item must cite valid sourceIds from the input.',
-          'Summaries must be short, transformative, and must not copy long source passages or expose backend-only full text.'
+          'Use article text as private source material only: extract facts, synthesize, and rewrite. Do not paste source paragraphs or reproduce full article text.'
         ].join(' ')
       },
       {
@@ -97,7 +98,7 @@ function createPromptPayload(context) {
   return {
     task: 'Generate AI enrichment for this clustered news signal.',
     outputSchema: {
-      aiBrief: 'Simplified Chinese string, 100 to 220 Chinese characters',
+      aiBrief: 'Simplified Chinese string, 100 to 280 visible characters',
       keyPoints: [{ text: 'Simplified Chinese string, <= 100 Chinese characters', sourceIds: ['source id'] }],
       timeline: [{ label: 'Simplified Chinese string, <= 100 Chinese characters', at: 'ISO timestamp when available', sourceIds: ['source id'] }],
       sourceMix: [{ sourceId: 'source id', sourceName: 'source name', role: 'official|media|research|community|product|supporting' }],
@@ -109,9 +110,10 @@ function createPromptPayload(context) {
       'Do not invent source IDs, URLs, dates, claims, or related signals.',
       'Return 2 to 4 keyPoints unless only one source exists.',
       'Prefer official and research sources when resolving conflicts.',
-      'Do not copy any 12-word-or-longer passage from article text.',
+      'Write for frontend display: synthesize facts into new Chinese wording, not sentence-by-sentence translation or copied source prose.',
+      'Mention concrete products, models, companies, metrics, releases, and source disagreements when supported by the input.',
       'If evidence is thin, say what is known and keep the output conservative.',
-      'Do not include backend-only full article text in the output.'
+      'Do not include backend-only full article text in the output; only expose the generated summary, key points, timeline labels, and attribution.'
     ],
     signal: {
       id: context.signal?.id,

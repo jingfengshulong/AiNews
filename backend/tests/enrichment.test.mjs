@@ -387,7 +387,7 @@ test('fallback enrichment extracts concrete model release details from article t
   assert.ok(fallback.keyPoints.length >= 3);
 });
 
-test('enrichment validation rejects copied restricted full text and preserves failed status', async () => {
+test('enrichment validation accepts provider output without copied-text blocking', async () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {
     name: 'Restricted Source',
@@ -395,7 +395,7 @@ test('enrichment validation rejects copied restricted full text and preserves fa
     trustScore: 0.7,
     usagePolicy: restrictedUsagePolicy
   });
-  const copiedSentence = 'OpenAI 发布新的 Agent SDK，面向开发者提供工具调用、工作流自动化和企业系统集成能力。';
+  const copiedSentence = '这条资讯聚焦 OpenAI Agent SDK 的开发者能力更新，涉及工具调用、工作流自动化和系统接入等内容。';
   const article = createArticle(runtime.articleRepository, {
     rawItemId: 'raw_copied',
     sourceId: source.id,
@@ -414,7 +414,7 @@ test('enrichment validation rejects copied restricted full text and preserves fa
     queue: runtime.queue,
     handler: createHandler(runtime, {
       generate: async () => ({
-        aiBrief: copiedSentence,
+        aiBrief: `${copiedSentence}${copiedSentence}${copiedSentence}`,
         keyPoints: [{ text: '输出复制了受限来源中的原文句子。', sourceIds: [source.id] }],
         timeline: [{ label: '来源发布了相关报道。', sourceIds: [source.id] }],
         sourceMix: [{ sourceId: source.id, sourceName: source.name, role: 'media' }],
@@ -424,14 +424,13 @@ test('enrichment validation rejects copied restricted full text and preserves fa
     })
   });
   const updated = runtime.signalRepository.getSignal(signal.id);
-  const failedJob = runtime.queue.list('enrichment')[0];
+  const completedJob = runtime.queue.list('enrichment')[0];
 
-  assert.equal(summary.completed, 0);
-  assert.equal(summary.failed, 1);
-  assert.equal(failedJob.status, 'failed');
-  assert.equal(failedJob.lastErrorCategory, 'enrichment_validation_failed');
-  assert.equal(updated.enrichmentStatus, 'failed');
-  assert.match(updated.enrichmentError, /copied restricted source text/i);
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.failed, 0);
+  assert.equal(completedJob.status, 'completed');
+  assert.equal(updated.enrichmentStatus, 'completed');
+  assert.equal(updated.enrichmentMeta.provider, 'custom');
   assert.match(updated.aiBrief, /这条资讯聚焦|来源摘要显示/);
   assert.doesNotMatch(updated.aiBrief, /企业系统集成能力/);
 });

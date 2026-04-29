@@ -87,7 +87,7 @@ When a real provider is wired, configure these project-root `.env` values:
 - `AI_ENRICHMENT_MODEL`: model name selected for brief/key point/timeline generation.
 - `AI_ENRICHMENT_BASE_URL`: provider API base URL when using a custom or compatible endpoint.
 
-Generated enrichment output is validated before it is stored. It must stay short, include source attribution, and must not expose copied full article text from sources whose policy forbids full-text display.
+Generated enrichment output is validated before it is stored. It must stay concise, include source attribution, and follow the structured output shape expected by the frontend. The model prompt tells the provider to synthesize source material into original editorial Chinese rather than paste source paragraphs.
 
 Run `npm run backend:enrichment:smoke` after configuring those variables to verify provider connectivity and output shape. The script prints the generated structured enrichment result but never prints the API key.
 
@@ -108,6 +108,6 @@ The API server can expose product-facing data through a first-party serving serv
 - `GET /api/topics/:slug`
 - `GET /api/search?q=&topic=&sourceFamily=&from=&to=`
 
-Product-facing responses include source attribution and original URLs. They exclude backend-only `textForAI` and do not expose copied full article text from restricted sources.
+Product-facing responses include source attribution and original URLs. They exclude backend-only `textForAI` and raw article payloads; the frontend displays the stored AI-generated brief, key points, timeline labels, and attribution fields.
 
 For local visual verification, run `npm run backend:demo` and open `http://localhost:4100/`. The static frontend will call the first-party APIs and render backend-generated demo `Signal` data.

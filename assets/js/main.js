@@ -36,6 +36,8 @@
   applyMotionPreference();
   motionQuery.addEventListener("change", applyMotionPreference);
 
+  renderInitialLoadingState();
+
   hydratePage().catch((error) => {
     console.warn("API rendering skipped:", error.message);
     renderPageUnavailable(error);
@@ -410,7 +412,7 @@
     let lastError;
     for (const base of apiBases) {
       try {
-        const response = await fetch(`${base}${path}`);
+        const response = await fetch(`${base}${path}`, { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -576,6 +578,72 @@
     }
     const list = items || [];
     root.innerHTML = list.length ? list.map(renderer).join("") : (options.emptyHtml || "");
+  }
+
+  function renderInitialLoadingState() {
+    const status = {
+      mode: "live",
+      state: "loading",
+      label: "LOADING LIVE DATA",
+      sourceOutcomeCounts: {}
+    };
+    if (page === "home") {
+      renderHomeState({ dataStatus: status, stats: {} }, "loading");
+      return;
+    }
+    if (page === "detail") {
+      setDetail("kicker", "# -- / LOADING SIGNAL");
+      setDetail("summary", "正在从后端加载这条资讯的最新处理结果。");
+      setDetail("body", "正在读取 AI 摘要、来源归因和要点。");
+      setDetail("source", "LOADING");
+      setDetail("date", "--/--");
+      setDetail("category", "LOADING");
+      setDetail("topic", "");
+      setDetail("heat", "--");
+      setDetail("score", "--");
+      setDetail("scoreText", "正在加载后端信号。");
+      setDetail("watch", "正在等待后端返回下一步观察项。");
+      applyDetailTitle("正在加载资讯详情", { fullTitle: "正在加载资讯详情", sourceLength: 8 });
+      [
+        "[data-detail-list='points']",
+        "[data-detail-list='timeline']",
+        "[data-detail-list='sourceMix']",
+        "[data-detail-list='originalLinks']",
+        "[data-detail-list='related']"
+      ].forEach((selector) => renderList(selector, [], () => "", {
+        emptyHtml: statePanel({
+          title: "正在加载",
+          summary: "后端数据返回后会替换这里的占位内容。"
+        }, status)
+      }));
+      return;
+    }
+    if (page === "sources" || page === "dates" || page === "topics") {
+      const titles = {
+        sources: "正在加载来源类型",
+        dates: "正在加载日期归档",
+        topics: "正在加载专题线索"
+      };
+      setText(".page-title", titles[page]);
+      setText(".page-intro", "正在从后端读取最新处理后的资讯，不展示静态示例内容。");
+      const stat = document.querySelector(".page-stat strong");
+      const statLabel = document.querySelector(".page-stat span");
+      if (stat) {
+        stat.textContent = "--";
+      }
+      if (statLabel) {
+        statLabel.textContent = "正在加载";
+      }
+      const root = page === "topics"
+        ? document.querySelector(".topic-list")
+        : document.querySelector(".archive-grid");
+      if (root) {
+        root.innerHTML = statePanel({
+          title: titles[page],
+          summary: "后端数据返回前先显示加载状态，避免旧示例页面闪现。"
+        }, status);
+      }
+    }
   }
 
   function renderHomeState(home = {}, state = "empty_live") {

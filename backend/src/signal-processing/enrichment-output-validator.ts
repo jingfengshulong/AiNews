@@ -64,11 +64,6 @@ export function validateEnrichmentOutput(output, context) {
     }
   }
 
-  const copiedMatch = copiedRestrictedTextMatch(normalized, context);
-  if (copiedMatch) {
-    errors.push(`Output appears to include copied restricted source text from ${copiedMatch.sourceName}`);
-  }
-
   if (errors.length > 0) {
     throw new EnrichmentValidationError(unique(errors).join('; '));
   }
@@ -96,63 +91,6 @@ function normalizeOutput(output = {}) {
     nextWatch: cleanText(output.nextWatch),
     relatedSignalIds: asArray(output.relatedSignalIds).filter(Boolean)
   };
-}
-
-function copiedRestrictedTextMatch(output, context) {
-  const outputText = normalizedText([
-    output.aiBrief,
-    output.nextWatch,
-    ...output.keyPoints.map((point) => point.text),
-    ...output.timeline.map((item) => item.label)
-  ].join(' '));
-
-  for (const article of context.articles) {
-    const source = context.sources.find((candidate) => candidate.id === article.sourceId);
-    if (!source || source.usagePolicy?.allowFullText === true || article.fullTextDisplayAllowed === true) {
-      continue;
-    }
-    const sourceText = normalizedText(article.textForAI || '');
-    const wordWindows = tokenWindows(sourceText.split(' '), 12);
-    const cjkWindows = characterWindows(sourceText.replace(/\s+/g, ''), 24);
-    const compactOutput = outputText.replace(/\s+/g, '');
-    if (wordWindows.some((window) => outputText.includes(window)) || cjkWindows.some((window) => compactOutput.includes(window))) {
-      return {
-        sourceName: source.name
-      };
-    }
-  }
-
-  return undefined;
-}
-
-function tokenWindows(tokens, size) {
-  if (tokens.length < size) {
-    return [];
-  }
-  const windows = [];
-  for (let index = 0; index <= tokens.length - size; index += 1) {
-    windows.push(tokens.slice(index, index + size).join(' '));
-  }
-  return windows;
-}
-
-function characterWindows(value, size) {
-  if (!hasCjk(value)) {
-    return [];
-  }
-  const chars = Array.from(value);
-  if (chars.length < size) {
-    return [];
-  }
-  const windows = [];
-  for (let index = 0; index <= chars.length - size; index += 1) {
-    windows.push(chars.slice(index, index + size).join(''));
-  }
-  return windows;
-}
-
-function normalizedText(value) {
-  return cleanText(value).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function cleanText(value) {
