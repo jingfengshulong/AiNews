@@ -144,6 +144,60 @@ test('backfill status filter accepts failed signals', () => {
   assert.deepEqual(result.candidates.map((signal) => signal.id), [failed.id]);
 });
 
+test('backfill includes pending signals that have not received AI enrichment', () => {
+  const runtime = createRuntime();
+  const pending = createSignal(runtime.signalRepository, {
+    title: 'Pending signal',
+    signalScore: 70,
+    enrichmentStatus: 'pending'
+  });
+
+  const result = enqueueEnrichmentBackfillJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    dryRun: true,
+    limit: 10
+  });
+
+  assert.deepEqual(result.candidates.map((signal) => signal.id), [pending.id]);
+});
+
+test('backfill can target all stale signals within a recent published window', () => {
+  const runtime = createRuntime();
+  const recentFailed = createSignal(runtime.signalRepository, {
+    title: 'Recent failed signal',
+    signalScore: 40,
+    primaryPublishedAt: '2026-04-27T08:00:00.000Z',
+    enrichmentStatus: 'failed',
+    enrichmentMeta: { enrichmentVersion: currentEnrichmentVersion, errorCategory: 'enrichment_provider_failed' }
+  });
+  const recentFallback = createSignal(runtime.signalRepository, {
+    title: 'Recent fallback signal',
+    signalScore: 30,
+    primaryPublishedAt: '2026-04-27T07:00:00.000Z',
+    enrichmentStatus: 'fallback',
+    enrichmentMeta: { fallbackGenerated: true }
+  });
+  createSignal(runtime.signalRepository, {
+    title: 'Old failed signal',
+    signalScore: 99,
+    primaryPublishedAt: '2026-04-25T08:00:00.000Z',
+    enrichmentStatus: 'failed',
+    enrichmentMeta: { enrichmentVersion: currentEnrichmentVersion, errorCategory: 'enrichment_provider_failed' }
+  });
+
+  const result = enqueueEnrichmentBackfillJobs({
+    signalRepository: runtime.signalRepository,
+    queue: runtime.queue,
+    dryRun: true,
+    limit: 'all',
+    publishedAfter: '2026-04-26T09:00:00.000Z',
+    now: new Date('2026-04-27T09:00:00.000Z')
+  });
+
+  assert.deepEqual(result.candidates.map((signal) => signal.id), [recentFailed.id, recentFallback.id]);
+});
+
 test('backfill processing can be scoped to the jobs queued by the current run', async () => {
   const runtime = createRuntime();
   const staleQueued = createSignal(runtime.signalRepository, {

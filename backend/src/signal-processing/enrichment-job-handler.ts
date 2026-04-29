@@ -212,10 +212,10 @@ function ensureSubstantiveEnrichmentOutput(output, context) {
   const fallback = createFallbackEnrichmentOutput(context);
   const repaired = {
     ...output,
-    keyPoints: validKeyPoints(output?.keyPoints, context) ? output.keyPoints : fallback.keyPoints,
-    timeline: validTimeline(output?.timeline, context) ? output.timeline : fallback.timeline,
+    keyPoints: validKeyPoints(output?.keyPoints, context) ? compactKeyPoints(output.keyPoints) : fallback.keyPoints,
+    timeline: validTimeline(output?.timeline, context) ? compactTimeline(output.timeline) : fallback.timeline,
     sourceMix: validSourceMix(output?.sourceMix, context) ? output.sourceMix : fallback.sourceMix,
-    nextWatch: hasCjk(output?.nextWatch) ? output.nextWatch : fallback.nextWatch,
+    nextWatch: hasCjk(output?.nextWatch) ? clipToVisibleLength(output.nextWatch, 140) : fallback.nextWatch,
     relatedSignalIds: asArray(output?.relatedSignalIds)
   };
   if (chineseCharCount(output?.aiBrief) >= 100) {
@@ -247,6 +247,22 @@ function validSourceMix(value, context) {
   const sourceIds = new Set(asArray(context.sources).map((source) => source.id));
   const items = asArray(value);
   return items.length > 0 && items.every((item) => sourceIds.has(item?.sourceId));
+}
+
+function compactKeyPoints(value) {
+  return asArray(value).map((point) => ({
+    ...(typeof point === 'string' ? {} : point),
+    text: clipToVisibleLength(typeof point === 'string' ? point : point?.text, 100),
+    sourceIds: asArray(point?.sourceIds).filter(Boolean)
+  }));
+}
+
+function compactTimeline(value) {
+  return asArray(value).map((item) => ({
+    ...(typeof item === 'string' ? {} : item),
+    label: clipToVisibleLength(typeof item === 'string' ? item : item?.label, 100),
+    sourceIds: asArray(item?.sourceIds).filter(Boolean)
+  }));
 }
 
 function validSourceIds(value, context) {

@@ -17,13 +17,15 @@ export function enqueueEnrichmentBackfillJobs({
   dryRun = false,
   staleOnly = false,
   statuses,
+  publishedAfter,
   now = new Date()
 } = {}) {
   const selectedStatuses = normalizeStatuses(statuses);
   const candidates = selectBackfillCandidates(signalRepository.listSignals(), {
     limit,
     staleOnly,
-    statuses: selectedStatuses
+    statuses: selectedStatuses,
+    publishedAfter
   });
 
   if (dryRun) {
@@ -60,10 +62,13 @@ export function enqueueEnrichmentBackfillJobs({
 export function selectBackfillCandidates(signals = [], {
   limit = 25,
   staleOnly = false,
-  statuses
+  statuses,
+  publishedAfter
 } = {}) {
   const selectedStatuses = normalizeStatuses(statuses);
+  const minimumPublishedAt = normalizeDate(publishedAfter);
   return signals
+    .filter((signal) => isWithinPublishedWindow(signal, { publishedAfter: minimumPublishedAt }))
     .filter((signal) => shouldBackfillSignal(signal, { staleOnly, statuses: selectedStatuses }))
     .sort(compareBackfillPriority)
     .slice(0, normalizeLimit(limit));
@@ -82,7 +87,9 @@ export function shouldBackfillSignal(signal, { staleOnly = false, statuses } = {
   if (staleOnly) {
     return false;
   }
-  return signal.enrichmentStatus === 'failed' || signal.enrichmentStatus === 'fallback';
+  return signal.enrichmentStatus === 'pending'
+    || signal.enrichmentStatus === 'failed'
+    || signal.enrichmentStatus === 'fallback';
 }
 
 export function isStaleEnrichmentSignal(signal) {
@@ -126,8 +133,34 @@ function backfillReasonForSignal(signal) {
 }
 
 function normalizeLimit(value) {
+  if (value === undefined || value === null || value === 'all' || value === Infinity) {
+    return undefined;
+  }
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 25;
+}
+
+function normalizeDate(value) {
+  if (!value) {
+    return undefined;
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function isWithinPublishedWindow(signal, { publishedAfter } = {}) {
+  if (!publishedAfter) {
+    return true;
+  }
+  const value = signal?.primaryPublishedAt || signal?.updatedAt || signal?.createdAt;
+  if (!value) {
+    return false;
+  }
+  const publishedAt = new Date(value);
+  if (Number.isNaN(publishedAt.getTime())) {
+    return false;
+  }
+  return publishedAt.getTime() >= publishedAfter.getTime();
 }
 
 function normalizeStatuses(statuses) {

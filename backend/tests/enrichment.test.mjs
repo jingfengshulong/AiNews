@@ -312,6 +312,51 @@ test('enrichment repairs missing provider structure before validation', async ()
   assert.match(updated.nextWatch, /继续关注/);
 });
 
+test('enrichment compacts overlong provider key points before validation', async () => {
+  const runtime = createRuntime();
+  const source = createSource(runtime.sourceService, {
+    name: 'Tech Media',
+    family: 'technology_media',
+    trustScore: 0.8,
+    usagePolicy: restrictedUsagePolicy
+  });
+  const article = createArticle(runtime.articleRepository, {
+    rawItemId: 'raw_long_key_point',
+    sourceId: source.id,
+    title: 'SenseNova U1 launches unified multimodal model',
+    excerpt: 'SenseNova U1 focuses on unified understanding and generation.',
+    textForAI: 'SenseNova U1 is released as a multimodal model for unified understanding, reasoning, and generation.',
+    contentHash: '7'.repeat(64)
+  });
+  const signal = createSignal(runtime, {
+    title: article.title,
+    articles: [article]
+  });
+  runtime.queue.enqueue('enrichment', { signalId: signal.id }, { jobKey: `enrichment:${signal.id}` });
+
+  const longPoint = '商汤发布 SenseNova U1，重点展示统一多模态理解、视觉推理、图像生成、连续图文创作和开源资料入口，同时强调开发者可在不同算力环境下选择合适版本并观察后续实际应用反馈。';
+  const summary = await processEnrichmentJobs({
+    queue: runtime.queue,
+    handler: createHandler(runtime, {
+      generate: async () => ({
+        aiBrief: '这条资讯聚焦 SenseNova U1 的发布与开源动向，核心变化是把多模态理解、推理和生成放进统一模型框架中处理。它对开发者的意义在于降低拼接式模型链路的复杂度，也让图像生成、视觉推理和连续图文创作有了更清晰的产品观察入口，后续需要继续看开源资料、实测效果和企业采用反馈。',
+        keyPoints: [{ text: longPoint, sourceIds: [source.id] }],
+        timeline: [{ label: longPoint, sourceIds: [source.id] }],
+        sourceMix: [{ sourceId: source.id, sourceName: source.name, role: 'media' }],
+        nextWatch: '继续关注开源资料、实测结果、社区反馈和企业应用案例是否增加。',
+        relatedSignalIds: []
+      })
+    })
+  });
+  const updated = runtime.signalRepository.getSignal(signal.id);
+
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.failed, 0);
+  assert.equal(updated.enrichmentStatus, 'completed');
+  assert.ok(Array.from(updated.keyPoints[0].text).length <= 100);
+  assert.ok(Array.from(updated.timeline[0].label).length <= 100);
+});
+
 test('fallback enrichment uses article context instead of generic source boilerplate', () => {
   const runtime = createRuntime();
   const source = createSource(runtime.sourceService, {

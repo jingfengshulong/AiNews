@@ -35,6 +35,9 @@ const signalRepository = new SignalRepository(store);
 const articleRepository = new ArticleRepository(store);
 const sourceService = new SourceService(new SourceRepository(store));
 const now = new Date();
+const publishedAfter = args.sinceHours
+  ? new Date(now.getTime() - args.sinceHours * 60 * 60 * 1000)
+  : undefined;
 
 const backfill = enqueueEnrichmentBackfillJobs({
   signalRepository,
@@ -43,6 +46,7 @@ const backfill = enqueueEnrichmentBackfillJobs({
   dryRun: args.dryRun,
   staleOnly: args.staleOnly,
   statuses: args.status,
+  publishedAfter,
   now
 });
 
@@ -50,6 +54,7 @@ if (args.dryRun) {
   printReport({
     snapshotPath,
     dryRun: true,
+    publishedAfter,
     backfill,
     enrichmentSummary: undefined
   });
@@ -84,6 +89,7 @@ await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
     latestEnrichmentBackfill: {
       ranAt: new Date().toISOString(),
       enrichmentVersion: currentEnrichmentVersion,
+      publishedAfter: publishedAfter?.toISOString(),
       queued: backfill.queued,
       completed: enrichmentSummary.completed,
       failed: enrichmentSummary.failed
@@ -94,6 +100,7 @@ await saveRuntimeSnapshot(snapshotPath, serializeRuntimeStore(store, {
 printReport({
   snapshotPath,
   dryRun: false,
+  publishedAfter,
   backfill,
   enrichmentSummary
 });
@@ -110,11 +117,12 @@ function createProvider({ config, timeoutMs }) {
   });
 }
 
-function printReport({ snapshotPath, dryRun, backfill, enrichmentSummary }) {
+function printReport({ snapshotPath, dryRun, publishedAfter, backfill, enrichmentSummary }) {
   console.log(JSON.stringify({
     ok: true,
     snapshotPath,
     dryRun,
+    publishedAfter: publishedAfter?.toISOString(),
     enrichmentVersion: currentEnrichmentVersion,
     queued: backfill.queued,
     candidates: backfill.candidates.map((signal) => ({
@@ -131,12 +139,13 @@ function printReport({ snapshotPath, dryRun, backfill, enrichmentSummary }) {
 
 function parseArgs(values) {
   const args = {
-    limit: numberFromEnv('ENRICHMENT_BACKFILL_LIMIT', 25),
+    limit: limitFromEnv('ENRICHMENT_BACKFILL_LIMIT', 25),
     processLimit: numberFromEnv('ENRICHMENT_BACKFILL_PROCESS_LIMIT', undefined),
     timeoutMs: numberFromEnv('AI_ENRICHMENT_TIMEOUT_MS', 30_000),
     dryRun: process.env.ENRICHMENT_BACKFILL_DRY_RUN === '1',
     staleOnly: process.env.ENRICHMENT_BACKFILL_STALE_ONLY === '1',
-    status: process.env.ENRICHMENT_BACKFILL_STATUS
+    status: process.env.ENRICHMENT_BACKFILL_STATUS,
+    sinceHours: numberFromEnv('ENRICHMENT_BACKFILL_SINCE_HOURS', undefined)
   };
 
   for (let index = 0; index < values.length; index += 1) {
@@ -150,11 +159,11 @@ function parseArgs(values) {
       continue;
     }
     if (value.startsWith('--limit=')) {
-      args.limit = parsePositiveInteger(value.slice('--limit='.length), args.limit);
+      args.limit = parseLimit(value.slice('--limit='.length), args.limit);
       continue;
     }
     if (value === '--limit') {
-      args.limit = parsePositiveInteger(values[++index], args.limit);
+      args.limit = parseLimit(values[++index], args.limit);
       continue;
     }
     if (value.startsWith('--process-limit=')) {
@@ -181,16 +190,40 @@ function parseArgs(values) {
       args.snapshot = values[++index];
       continue;
     }
+    if (value.startsWith('--since-hours=')) {
+      args.sinceHours = parsePositiveNumber(value.slice('--since-hours='.length), args.sinceHours);
+      continue;
+    }
+    if (value === '--since-hours') {
+      args.sinceHours = parsePositiveNumber(values[++index], args.sinceHours);
+      continue;
+    }
   }
 
   return args;
+}
+
+function limitFromEnv(name, fallback) {
+  return parseLimit(process.env[name], fallback);
 }
 
 function numberFromEnv(name, fallback) {
   return parsePositiveInteger(process.env[name], fallback);
 }
 
+function parseLimit(value, fallback) {
+  if (String(value || '').toLowerCase() === 'all') {
+    return 'all';
+  }
+  return parsePositiveInteger(value, fallback);
+}
+
 function parsePositiveInteger(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
