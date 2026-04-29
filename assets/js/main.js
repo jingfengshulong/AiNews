@@ -65,7 +65,7 @@
   }
 
   async function hydrateHomePage() {
-    setText(".footer-note", formatDataStatus({ mode: "live", state: "loading", sourceOutcomeCounts: {} }));
+    renderFooterStatus({ mode: "live", state: "loading", sourceOutcomeCounts: {} });
     const home = await fetchApi("/api/home");
     if (!home.leadSignal) {
       renderHomeState(home, home.dataStatus?.state || "empty_live");
@@ -145,7 +145,7 @@
     if (ticker) {
       ticker.textContent = asArray(home.tickerItems).map((item) => item.text).join(" / ");
     }
-    setText(".footer-note", formatDataStatus(home.dataStatus));
+    renderFooterStatus(home.dataStatus);
   }
 
   async function hydrateDetailPage() {
@@ -161,7 +161,7 @@
 
     const detail = await fetchApi(`/api/signals/${encodeURIComponent(id)}`);
     const signal = detail.signal;
-    setText(".footer-note", formatDataStatus(detail.dataStatus));
+    renderFooterStatus(detail.dataStatus);
 
     document.title = `${signal.title} | Signal Daily`;
     setDetail("kicker", `# ${signal.id} / HOT SIGNAL`);
@@ -707,7 +707,7 @@
     if (ticker) {
       ticker.textContent = copy.ticker;
     }
-    setText(".footer-note", formatDataStatus(home.dataStatus || { mode: "live", state }));
+    renderFooterStatus(home.dataStatus || { mode: "live", state });
   }
 
   function renderPageUnavailable(error) {
@@ -722,7 +722,7 @@
       renderHomeState({ dataStatus: status, stats: {} }, "api_unavailable");
       return;
     }
-    setText(".footer-note", formatDataStatus(status));
+    renderFooterStatus(status);
     const stat = document.querySelector(".page-stat strong");
     if (stat) {
       stat.textContent = "0";
@@ -1029,6 +1029,30 @@
       return "DEMO DATA / deterministic local backend fixture";
     }
     return `${String(status.mode || "API").toUpperCase()} DATA / status pending`;
+  }
+
+  function renderFooterStatus(status) {
+    const footer = document.querySelector(".footer-note");
+    if (!footer) {
+      return;
+    }
+    const statusText = formatDataStatus(status);
+    const statusNode = footer.querySelector("[data-footer-status]");
+    if (statusNode) {
+      statusNode.textContent = statusText;
+    } else {
+      footer.textContent = statusText;
+    }
+    const fetchNode = footer.querySelector("[data-last-fetch]");
+    if (fetchNode) {
+      const fetchedAt = status?.lastLiveFetchAt || status?.lastUpdatedAt;
+      fetchNode.textContent = fetchedAt ? formatDateTime(fetchedAt) : "等待实时数据";
+      if (fetchedAt) {
+        fetchNode.setAttribute("datetime", fetchedAt);
+      } else {
+        fetchNode.removeAttribute("datetime");
+      }
+    }
   }
 
   function asArray(value) {

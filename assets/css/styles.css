@@ -721,6 +721,22 @@ input {
   padding: 22px 0 38px;
   color: var(--muted);
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.last-fetch-meta {
+  color: var(--paper);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.last-fetch-meta time {
+  color: var(--cyan);
 }
 
 .detail-breadcrumb {
@@ -1097,6 +1113,15 @@ input {
   .topic-row,
   .search-line {
     grid-template-columns: 1fr;
+  }
+
+  .footer-note {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .last-fetch-meta {
+    white-space: normal;
   }
 
   .stat-block {

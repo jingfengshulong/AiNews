@@ -144,6 +144,8 @@ test('homepage renders lead, ranking, stats, archives, and ticker from /api/home
   assert.match(document.querySelector('.ticker-track').textContent, /OpenAI introduces/);
   assert.match(document.querySelector('.footer-note').textContent, /LIVE DATA/);
   assert.match(document.querySelector('.footer-note').textContent, /3 sources/);
+  assert.match(document.querySelector('.footer-note').textContent, /最近抓取/);
+  assert.equal(document.querySelector('[data-last-fetch]').getAttribute('datetime'), homeResponse.dataStatus.lastLiveFetchAt);
 });
 
 test('homepage compacts long live lead titles for the hero layout', async () => {
