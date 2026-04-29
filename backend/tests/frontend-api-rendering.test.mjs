@@ -378,6 +378,7 @@ test('sources, dates, topics, and search pages render API data', async () => {
       '/api/dates/week': { range: { label: 'week' }, signals: [signal, homeResponse.rankedSignals[0]] }
     }
   });
+  assert.doesNotMatch(datesDom.window.document.querySelector('.page-title').textContent, /正在加载/);
   assert.ok(Array.from(datesDom.window.document.querySelectorAll('.category-card')).some((node) => node.getAttribute('href') === 'dates.html?range=today'));
   assert.match(datesDom.window.document.querySelector('.archive-grid').textContent, /OpenAI introduces Agent SDK/);
   assert.doesNotMatch(datesDom.window.document.querySelector('.archive-grid').textContent, /AI Agent 企业落地/);
@@ -399,6 +400,7 @@ test('sources, dates, topics, and search pages render API data', async () => {
       }
     }
   });
+  assert.doesNotMatch(topicsDom.window.document.querySelector('.page-title').textContent, /正在加载/);
   assert.equal(topicsDom.window.document.querySelector('.topic-row').getAttribute('href'), 'topics.html?topic=ai-agent');
   assert.match(topicsDom.window.document.querySelector('.topic-list').textContent, /OpenAI introduces Agent SDK/);
   assert.doesNotMatch(topicsDom.window.document.querySelector('.topic-list').textContent, /企业流程自动化/);

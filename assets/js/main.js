@@ -271,6 +271,12 @@
       return;
     }
 
+    setText(".page-title", "按日期回看热点");
+    setText(".page-intro", "日期页承接首页归档入口，让用户按时间线追踪 AI 行业信号，而不是在首页展开复杂筛选。");
+    const statLabel = document.querySelector(".page-stat span");
+    if (statLabel) {
+      statLabel.textContent = "本周趋势资讯";
+    }
     const groups = await Promise.all([
       ["今天", "today", "/api/dates/today"],
       ["昨天", "yesterday", "/api/dates/yesterday"],
@@ -309,6 +315,12 @@
 
     const data = await fetchApi("/api/topics");
     const activeTopics = data.topics.filter((topic) => topic.signalCount > 0);
+    setText(".page-title", "AI 产业专题线索");
+    setText(".page-intro", "专题页把爆款资讯背后的长期主题抽出来，帮助用户从一天的热点切换到持续追踪。");
+    const statLabel = document.querySelector(".page-stat span");
+    if (statLabel) {
+      statLabel.textContent = "核心专题正在追踪";
+    }
     const stat = document.querySelector(".page-stat strong");
     if (stat) {
       stat.textContent = String(activeTopics.length);
